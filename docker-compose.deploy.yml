@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  weknora-ui:
+    image: weknora/weknora-ui:latest
+    container_name: weknora-ui
+    restart: unless-stopped
+    ports:
+      - "29215:80"
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+    depends_on:
+      - weknora-api
+    networks:
+      - weknora-net
+
+  weknora-api:
+    image: weknora/weknora:latest
+    container_name: weknora-api
+    restart: unless-stopped
+    ports:
+      - "29216:8080"
+    environment:
+      - DB_DRIVER=postgres
+      - DB_HOST=postgres
+      - DB_NAME=weknora
+      - DB_USER=weknora
+      - DB_PASSWORD=${DB_PASSWORD}
+      - VECTOR_STORE=pgvector
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - EMBEDDING_API_BASE=${EMBEDDING_API_BASE}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - NEO4J_ENABLED=true
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+    volumes:
+      - weknora-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    networks:
+      - weknora-net
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: weknora-db
+    restart: unless-stopped
+    ports:
+      - "29219:5432"
+    environment:
+      POSTGRES_DB: weknora
+      POSTGRES_USER: weknora
+      POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weknora -d weknora"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weknora-net
+
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: weknora-neo4j
+    restart: unless-stopped
+    ports:
+      - "29217:7474"
+      - "29218:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: ["apoc"]
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weknora-net
+
+  crawler:
+    build:
+      context: ./crawler
+      dockerfile: Dockerfile
+    container_name: weknora-crawler
+    restart: unless-stopped
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+      - WEKNORA_KB_ID=${WEKNORA_KB_ID}
+    volumes:
+      - ./crawler/sources.yaml:/app/sources.yaml:ro
+      - crawler-data:/data
+    depends_on:
+      - weknora-api
+    networks:
+      - weknora-net
+
+  scheduler:
+    build:
+      context: ./scheduler
+      dockerfile: Dockerfile
+    container_name: weknora-scheduler
+    restart: unless-stopped
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+    volumes:
+      - ./scheduler/config.yaml:/app/config.yaml:ro
+      - ./ingester:/app/ingester:ro
+    depends_on:
+      - weknora-api
+    networks:
+      - weknora-net
+
+volumes:
+  weknora-data:
+  pg-data:
+  neo4j-data:
+  crawler-data:
+
+networks:
+  weknora-net:
+    driver: bridge
