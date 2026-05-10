@@ -1,0 +1,86 @@
+# Crawl4AI Sources Configuration
+# Define web sources for periodic crawling
+
+sources:
+  # Example: Open source project documentation
+  - id: "react-docs"
+    name: "React 官方文档"
+    type: "web"
+    enabled: true
+
+    # Crawl settings
+    seed_urls:
+      - "https://react.dev/learn"
+
+    # Depth control
+    max_depth: 3
+    max_pages: 500
+
+    # URL filtering (regex patterns)
+    include_patterns:
+      - "^/learn/"
+      - "^/reference/"
+    exclude_patterns:
+      - "/assets/"
+      - "/static/"
+      - "\\.(pdf|png|jpg|jpeg|gif)$"
+      - "\\?.*"  # Exclude query strings
+
+    # Authentication (if needed)
+    # auth:
+    #   type: "cookie"
+    #   cookies:
+    #     session: "your_session_cookie"
+
+    # Rate limiting
+    rate_limit: 0.5  # seconds between requests
+    max_concurrent: 1
+
+    # Schedule (cron expression)
+    schedule: "0 3 * * *"  # Daily at 3 AM
+
+    # Output settings
+    output_format: "markdown"
+    output_dir: "/data/output/react-docs"
+
+    # Target Knowledge Base in WeKnora
+    kb_id: "kb_react_docs"
+
+  - id: "vue-docs"
+    name: "Vue.js 官方文档"
+    type: "web"
+    enabled: true
+
+    seed_urls:
+      - "https://vuejs.org/guide/"
+
+    max_depth: 3
+    max_pages: 500
+
+    include_patterns:
+      - "^/guide/"
+      - "^/api/"
+    exclude_patterns:
+      - "/assets/"
+      - "\\.(pdf|png|jpg)$"
+
+    schedule: "30 3 * * *"  # Daily at 3:30 AM
+
+    output_format: "markdown"
+    output_dir: "/data/output/vue-docs"
+    kb_id: "kb_vue_docs"
+
+  # Internal wiki example (requires authentication)
+  # - id: "internal-wiki"
+  #   name: "内部知识库"
+  #   type: "web"
+  #   enabled: false
+  #   seed_urls:
+  #     - "https://wiki.internal.com/"
+  #   auth:
+  #     type: "form"
+  #     login_url: "https://wiki.internal.com/login"
+  #     username: "${WIKI_USERNAME}"
+  #     password: "${WIKI_PASSWORD}"
+  #   schedule: "0 4 * * *"
+  #   kb_id: "kb_internal"

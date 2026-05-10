@@ -1,0 +1,184 @@
+# WikiService Docker Compose - Production Deployment
+# WeKnora + Neo4j + PostgreSQL + pgvector + Crawler + Scheduler
+
+services:
+  # ==================== WeKnora Core ====================
+  weknora-api:
+    image: weknora/weknora:latest
+    container_name: weknora-api
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      # Database
+      - DB_DRIVER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=weknora
+      - DB_USER=weknora
+      - DB_PASSWORD=${DB_PASSWORD:-weknora_secret_db_password}
+
+      # Vector Store
+      - VECTOR_STORE=pgvector
+      - PGVECTOR_SCHEMA=public
+
+      # Embedding Model (configurable per business needs)
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-siliconflow}
+      - EMBEDDING_API_BASE=${EMBEDDING_API_BASE:-https://api.siliconflow.cn/v1}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-m3}
+
+      # Neo4j Knowledge Graph
+      - NEO4J_ENABLED=true
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-weknora_secret_neo4j_password}
+
+      # MinIO/OSS for file storage (optional, uses local fs if not set)
+      - OSS_PROVIDER=local
+      - LOCAL_STORAGE_PATH=/data/storage
+
+      # App settings
+      - APP_ENV=production
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=*
+    volumes:
+      - weknora_storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    networks:
+      - weknora-network
+
+  weknora-ui:
+    image: weknora/weknora-ui:latest
+    container_name: weknora-ui
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+    depends_on:
+      - weknora-api
+    networks:
+      - weknora-network
+
+  # ==================== Database ====================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: weknora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: weknora
+      POSTGRES_USER: weknora
+      POSTGRES_PASSWORD=${DB_PASSWORD:-weknora_secret_db_password}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weknora -d weknora"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weknora-network
+
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: weknora-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-weknora_secret_neo4j_password}
+      NEO4J_PLUGINS: ["apoc"]
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_memory_heap_initial__size: 2G
+      NEO4J_dbms_memory_heap_max__size: 4G
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - weknora-network
+
+  # ==================== Crawler Service (Crawl4AI) ====================
+  crawler:
+    build:
+      context: ./crawler
+      dockerfile: Dockerfile
+    container_name: weknora-crawler
+    restart: unless-stopped
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+      - WEKNORA_KB_ID=${WEKNORA_KB_ID}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-m3}
+    volumes:
+      - ./crawler/sources.yaml:/app/sources.yaml:ro
+      - crawler_data:/data
+      - ./logs:/app/logs
+    depends_on:
+      - weknora-api
+    networks:
+      - weknora-network
+
+  # ==================== Scheduler Service ====================
+  scheduler:
+    build:
+      context: ./scheduler
+      dockerfile: Dockerfile
+    container_name: weknora-scheduler
+    restart: unless-stopped
+    environment:
+      - WEKNORA_API_URL=http://weknora-api:8080
+      - LOG_LEVEL=info
+    volumes:
+      - ./scheduler/config.yaml:/app/config.yaml:ro
+      - ./ingester:/app/ingester:ro
+      - scheduler_data:/data
+      - ./logs:/app/logs
+    depends_on:
+      - weknora-api
+      - crawler
+    networks:
+      - weknora-network
+
+  # ==================== MCP Server (Optional - WeKnora has built-in) ====================
+  # Uncomment if you need a separate/independent MCP server
+  # mcp-server:
+  #   image: weknora/weknora-mcp:latest
+  #   container_name: weknora-mcp
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3100:3100"
+  #   environment:
+  #     - WEKNORA_API_URL=http://weknora-api:8080
+  #   depends_on:
+  #     - weknora-api
+  #   networks:
+  #     - weknora-network
+
+volumes:
+  pgdata:
+    driver: local
+  neo4jdata:
+    driver: local
+  weknora_storage:
+    driver: local
+  crawler_data:
+    driver: local
+  scheduler_data:
+    driver: local
+
+networks:
+  weknora-network:
+    driver: bridge

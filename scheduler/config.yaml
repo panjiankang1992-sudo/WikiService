@@ -1,0 +1,56 @@
+# Scheduler Configuration
+# Defines scheduled tasks for web crawling, Git ingestion, and file watching
+
+# ==================== Web Sources (Crawl4AI) ====================
+web_sources:
+  - id: "react-docs"
+    name: "React 官方文档"
+    enabled: true
+    schedule: "0 3 * * *"  # Daily at 3 AM
+
+  - id: "vue-docs"
+    name: "Vue.js 官方文档"
+    enabled: true
+    schedule: "30 3 * * *"  # Daily at 3:30 AM
+
+# ==================== Git Sources ====================
+git_sources:
+  - id: "team-backend"
+    name: "后端代码仓库"
+    enabled: true
+    url: "https://github.com/team/backend.git"
+    branch: "main"
+    local_path: "/data/repos/backend"
+    kb_id: "kb_backend"
+    include_patterns:
+      - "docs/**/*.md"
+      - "README.md"
+      - "CHANGELOG.md"
+    exclude_patterns:
+      - ".git"
+      - "node_modules"
+      - "__pycache__"
+    schedule: "0 5 * * *"  # Daily at 5 AM
+
+  - id: "open-source-docs"
+    name: "开源项目文档"
+    enabled: false  # Disabled by default
+    url: "https://github.com/project/docs.git"
+    local_path: "/data/repos/oss-docs"
+    kb_id: "kb_oss"
+    include_patterns:
+      - "**/*.md"
+      - "**/*.rst"
+    schedule: "0 6 * * *"  # Daily at 6 AM
+
+# ==================== File Watching ====================
+file_watcher:
+  enabled: true
+  watch_dirs:
+    - "/data/local-docs"
+  include_patterns:
+    - "*.md"
+    - "*.rst"
+    - "*.txt"
+  kb_id: "kb_local"
+  schedule: "0 */2 * * *"  # Every 2 hours
