@@ -67,17 +67,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 WikiService/
 ├── CLAUDE.md                      # This file
+├── README.md                      # Quick start guide
 ├── WikiServer_服务器版 Wiki 完整实现方案.md  # Full technical spec
+├── .env.example                   # Environment variables template
+├── docker-compose.prod.yml        # Production deployment
 ├── .claude/
 │   └── settings.local.json        # Claude Code permissions
-├── crawler/                       # Crawl4AI integration (to implement)
-│   ├── sources.yaml               # Crawler configuration
-│   └── Dockerfile
-├── ingester/                      # Git repository ingester (to implement)
-│   └── git_ingester.py
+├── crawler/                       # Crawl4AI web crawler
+│   ├── Dockerfile
+│   ├── crawler.py                 # Main crawler script
+│   └── sources.yaml               # Crawler configuration
+├── ingester/                      # Data ingestion modules
+│   ├── git_ingester.py            # Git repository ingester
+│   └── file_watcher.py            # Local file watcher (watchdog)
 ├── scheduler/                     # APScheduler orchestration
-│   └── scheduler.py
-└── docker-compose.prod.yml        # Production deployment
+│   ├── Dockerfile
+│   ├── scheduler.py               # Main scheduler script
+│   └── config.yaml                # Scheduler configuration
+├── mcp_server/                    # MCP tools
+│   └── mcp_tools.py               # Enhanced MCP tools for WikiService
+├── monitoring/                    # Prometheus + Grafana
+│   ├── docker-compose.monitoring.yml
+│   ├── prometheus.yml
+│   ├── alerts.yml
+│   └── alertmanager.yml
+├── backup/                        # Backup scripts
+│   └── backup-scripts.sh          # PostgreSQL/Neo4j/Storage backup
+├── test-data/                     # Test documents
+│   ├── 微服务架构设计原则.md
+│   ├── Kubernetes 部署指南.md
+│   └── API 网关设计.md
+└── docs/                          # Documentation
+    └── DEPLOYMENT.md              # Deployment and usage guide
 ```
 
 ---
@@ -150,7 +171,31 @@ The file [`WikiServer_服务器版 Wiki 完整实现方案.md`](./WikiServer_服
 
 ## Current Status
 
-- ✅ Initial commit completed (2026-05-10)
-- ✅ `master` branch created and set as primary
-- 🚧 Phase 1 pending: WeKnora deployment, embedding config, test data import
-- 🚧 Crawler, Git Ingester, Scheduler: design ready, implementation pending
+**Implementation Complete (2026-05-10)**
+
+All 3 phases of the 15-day plan have been implemented:
+
+### Phase 1: Core Deployment ✅
+- WeKnora Docker Compose deployment (API + UI + Neo4j + PostgreSQL + pgvector)
+- Configurable embedding model support (SiliconFlow BGE-M3 / Jina AI / custom)
+- Test data imported (microservices, K8s, API gateway docs)
+- MCP tools implemented (search, graph exploration, ingestion triggers)
+
+### Phase 2: Multi-source Ingestion ✅
+- Crawl4AI integration with scheduled crawling
+- Git Ingester with incremental updates (SHA256 deduplication)
+- File Watcher using watchdog for real-time sync
+- APScheduler unified orchestration layer
+
+### Phase 3: Production Features ✅
+- Monitoring stack (Prometheus + Grafana + Alertmanager)
+- Alert rules (service availability, resource usage, application metrics)
+- Backup scripts (PostgreSQL dump, Neo4j backup, storage sync)
+- Complete documentation (DEPLOYMENT.md with troubleshooting guide)
+
+### Next Steps for Users
+1. Configure `.env` with your embedding API key
+2. Run `docker-compose -f docker-compose.prod.yml up -d`
+3. Access WeKnora UI at http://localhost:8080
+4. Configure your data sources in `crawler/sources.yaml` and `scheduler/config.yaml`
+5. Set up monitoring with `docker-compose -f monitoring/docker-compose.monitoring.yml up -d`
