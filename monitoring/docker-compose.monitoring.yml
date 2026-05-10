@@ -1,0 +1,78 @@
+# Monitoring Stack for WikiService
+# Prometheus + Grafana + Alertmanager
+
+services:
+  # ==================== Prometheus ====================
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: weknora-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - weknora-network
+
+  # ==================== Grafana ====================
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: weknora-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - weknora-network
+
+  # ==================== Alertmanager ====================
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    container_name: weknora-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - weknora-network
+
+  # ==================== Node Exporter (Host Metrics) ====================
+  node-exporter:
+    image: prom/node-exporter:v1.6.0
+    container_name: weknora-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - weknora-network
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  alertmanager_data:

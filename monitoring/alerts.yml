@@ -1,0 +1,100 @@
+# Alert Rules for WikiService
+
+groups:
+  - name: weknora_alerts
+    interval: 30s
+    rules:
+      # ==================== Service Availability ====================
+      - alert: WeKnoraAPIDown
+        expr: up{job="weknora-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "WeKnora API is down"
+          description: "WeKnora API service has been down for more than 1 minute."
+
+      - alert: Neo4jDown
+        expr: up{job="neo4j"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Neo4j is down"
+          description: "Neo4j service has been down for more than 1 minute."
+
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL service has been down for more than 1 minute."
+
+      # ==================== Resource Usage ====================
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes on {{ $labels.instance }}."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for more than 5 minutes on {{ $labels.instance }}."
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 15% on {{ $labels.instance }}."
+
+      # ==================== Application Metrics ====================
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for more than 5 minutes."
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency is above 2 seconds."
+
+      # ==================== Crawler Alerts ====================
+      - alert: CrawlerJobFailed
+        expr: crawler_job_status{status="failed"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Crawler job failed"
+          description: "Crawler job {{ $labels.job_name }} has failed."
+
+      # ==================== Git Ingester Alerts ====================
+      - alert: GitIngestionFailed
+        expr: git_ingester_status{status="failed"} == 1
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Git ingestion failed"
+          description: "Git ingestion for {{ $labels.repo }} has failed."

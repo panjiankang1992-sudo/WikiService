@@ -1,0 +1,70 @@
+# Prometheus Configuration
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'prometheus'
+
+  # WeKnora API metrics
+  - job_name: 'weknora-api'
+    static_configs:
+      - targets: ['weknora-api:8080']
+        labels:
+          instance: 'weknora-api'
+
+  # Node Exporter (host metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'host'
+
+  # PostgreSQL metrics (via postgres-exporter if deployed)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          instance: 'postgres'
+    enabled: false  # Uncomment when postgres-exporter is added
+
+  # Neo4j metrics
+  - job_name: 'neo4j'
+    static_configs:
+      - targets: ['neo4j:7474']
+        labels:
+          instance: 'neo4j'
+
+  # Crawler service metrics
+  - job_name: 'crawler'
+    static_configs:
+      - targets: ['crawler:8000']
+        labels:
+          instance: 'crawler'
+    enabled: false  # Uncomment when crawler exposes metrics
+
+  # Scheduler service metrics
+  - job_name: 'scheduler'
+    static_configs:
+      - targets: ['scheduler:8000']
+        labels:
+          instance: 'scheduler'
+    enabled: false  # Uncomment when scheduler exposes metrics

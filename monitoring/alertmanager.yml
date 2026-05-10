@@ -1,0 +1,63 @@
+# Alertmanager Configuration
+
+global:
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'alertmanager@weknora.local'
+  smtp_require_tls: false
+
+# Templates for notification messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Alert routing
+route:
+  group_by: ['alertname', 'severity', 'instance']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'default-receiver'
+  routes:
+    # Critical alerts go to pager
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      repeat_interval: 1h
+
+    # Warning alerts go to slack
+    - match:
+        severity: warning
+      receiver: 'slack-receiver'
+      repeat_interval: 4h
+
+# Receivers
+receivers:
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'admin@weknora.local'
+        send_resolved: true
+
+  - name: 'critical-receiver'
+    email_configs:
+      - to: 'oncall@weknora.local'
+        send_resolved: true
+        html: |
+          <h2>🚨 Critical Alert</h2>
+          <p><strong>{{ .GroupLabels.alertname }}</strong></p>
+          <p>{{ .CommonAnnotations.description }}</p>
+
+  - name: 'slack-receiver'
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+        channel: '#alerts'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ .CommonAnnotations.description }}'
+
+# Inhibition rules
+inhibit_rules:
+  # If service is down, don't alert on high latency for that service
+  - source_match:
+      alertname: 'WeKnoraAPIDown'
+    target_match:
+      alertname: 'HighLatency'
+    equal: ['instance']
