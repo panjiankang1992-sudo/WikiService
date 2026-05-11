@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  lightrag:
+    build:
+      context: ./lightrag
+      dockerfile: Dockerfile
+    container_name: wiki-lightrag
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-sk-9538d57105d14bb194708e629c36ad74}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - MODEL_NAME=deepseek-chat
+      - EMBEDDING_MODEL=deepseek-embedding
+      - STORAGE_PATH=/data/lightrag
+      - PORT=8080
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    volumes:
+      - lightrag-data:/data/lightrag
+
+volumes:
+  lightrag-data:
