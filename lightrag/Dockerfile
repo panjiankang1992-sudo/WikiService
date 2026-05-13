@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install LightRAG and dependencies
-RUN pip install --no-cache-dir lightrag-hku flask flask-cors networkx openai tiktoken httpx beautifulsoup4 lxml
+RUN pip install --no-cache-dir flask flask-cors networkx openai tiktoken httpx beautifulsoup4 lxml
 
 # Copy application files
 COPY app.py /app/

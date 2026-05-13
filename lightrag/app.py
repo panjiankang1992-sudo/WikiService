@@ -15,11 +15,16 @@ from flask_cors import CORS
 
 print("Starting WikiService Knowledge Base...", file=sys.stderr)
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder='templates')
 CORS(app)
 
-# Environment variables
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-9538d57105d14bb194708e629c36ad74")
+# Environment variables (all required)
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", os.getenv("deepseek_api_key", ""))
+if not DEEPSEEK_API_KEY:
+    print("ERROR: DEEPSEEK_API_KEY environment variable is required", file=sys.stderr)
+    print("Set it via: export DEEPSEEK_API_KEY=your_api_key", file=sys.stderr)
+    sys.exit(1)
+
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-chat")
 STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/lightrag")

@@ -9,11 +9,17 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-sk-9538d57105d14bb194708e629c36ad74}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - MODEL_NAME=deepseek-chat
-      - EMBEDDING_MODEL=deepseek-embedding
+      - MODEL_NAME=${MODEL_NAME:-deepseek-chat}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-deepseek-embedding}
       - STORAGE_PATH=/data/lightrag
       - PORT=8080
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
