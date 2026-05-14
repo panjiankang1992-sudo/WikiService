@@ -45,7 +45,8 @@
 
         /* Top Bar */
         .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
-        .page-title { font-size: 28px; font-weight: 700; }
+        .page-title { font-size: 28px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .page-title-icon { font-size: 28px; opacity: 0.8; }
         .page-subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 4px; }
         .btn-add { padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
         .btn-add:hover { background: var(--primary-dark); transform: translateY(-1px); }
@@ -143,6 +144,25 @@
 
         /* Query Result */
         .answer-box { background: var(--bg-dark); border-radius: 8px; padding: 16px; margin-top: 16px; line-height: 1.8; white-space: pre-wrap; font-size: 14px; }
+        .source-list { margin-top: 12px; }
+        .source-list-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .source-item { background: var(--bg-hover); border-radius: 8px; margin-bottom: 8px; overflow: hidden; border: 1px solid var(--border); transition: border-color 0.2s; cursor: pointer; }
+        .source-item:hover { border-color: var(--primary); background: rgba(91,141,239,0.06); }
+        .source-header { display: flex; align-items: center; padding: 10px 14px; gap: 10px; user-select: none; }
+        .source-chevron { font-size: 14px; color: var(--text-secondary); flex-shrink: 0; }
+        .source-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+        .source-badge.manual { background: rgba(156,39,176,0.2); color: #ce93d8; }
+        .source-badge.url { background: rgba(46,204,113,0.2); color: #2ecc71; }
+        .source-badge.github { background: rgba(139,92,246,0.2); color: #b39ddb; }
+        .source-badge.dir, .source-badge.file { background: rgba(243,156,18,0.2); color: #f39c12; }
+        .source-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
+        .source-name { font-size: 13px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .source-preview { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+        .source-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+        .source-item.open .source-body { max-height: 500px; overflow-y: auto; }
+        .source-body-inner { padding: 12px 14px; font-size: 13px; color: var(--text-secondary); line-height: 1.8; white-space: pre-wrap; border-top: 1px solid var(--border); }
+        .source-body-inner::-webkit-scrollbar { width: 4px; }
+        .source-body-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
         /* Graph */
         .graph-container { height: 480px; background: var(--bg-dark); border-radius: 8px; position: relative; overflow: hidden; }
@@ -163,12 +183,61 @@
         .graph-legend { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary); }
         .graph-legend span { display: flex; align-items: center; gap: 4px; }
 
+        /* Graph node selection */
+        .graph-selected circle, .graph-selected rect, .graph-selected polygon { filter: drop-shadow(0 0 6px #ffd700); }
+        .graph-connected circle, .graph-connected rect, .graph-connected polygon { filter: drop-shadow(0 0 3px rgba(255,255,255,0.4)); }
+        .graph-node-dim { opacity: 0.2 !important; }
+        .graph-link-dim { stroke-opacity: 0.08 !important; stroke-width: 0.5 !important; }
+        .graph-link-active { stroke: #ffd700 !important; stroke-opacity: 0.9 !important; stroke-width: 2.5 !important; }
+        .graph-legend-hint { margin-top: 8px; font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+
+        /* Graph Filter Bar */
+        .graph-filter-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: var(--bg-dark); border-bottom: 1px solid var(--border); gap: 12px; }
+        .graph-filter-left { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 300px; }
+        .graph-filter-input { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; color: var(--text-primary); font-size: 13px; }
+        .graph-filter-input:focus { outline: none; border-color: var(--primary); }
+        .graph-filter-input::placeholder { color: var(--text-secondary); }
+        .graph-filter-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .graph-filter-toggle { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; user-select: none; }
+        .graph-filter-toggle:hover { border-color: var(--primary); color: var(--text-primary); }
+        .graph-filter-toggle.active { background: rgba(91,141,239,0.15); border-color: var(--primary); color: var(--primary); }
+
+        /* Graph related docs panel */
+        .related-list { display: flex; flex-direction: column; gap: 8px; }
+        .related-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--bg-dark); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .related-item:hover { border-color: var(--primary); background: var(--bg-hover); }
+        .related-icon { font-size: 18px; flex-shrink: 0; color: var(--primary); }
+        .related-info { flex: 1; min-width: 0; }
+        .related-name { font-size: 13px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .related-preview { font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+        .related-meta { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+        .related-empty { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px; }
+
         /* Chunks List */
-        .chunks-list { max-height: 500px; overflow-y: auto; }
-        .chunk-item { background: var(--bg-dark); border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 3px solid var(--primary); }
-        .chunk-item .source { font-size: 12px; color: var(--primary); margin-bottom: 4px; font-weight: 500; }
-        .chunk-item .preview { font-size: 13px; color: var(--text-secondary); }
-        .chunk-item .meta { font-size: 11px; color: var(--text-secondary); opacity: 0.7; margin-top: 4px; }
+        .chunks-list { max-height: 600px; overflow-y: auto; }
+        .chunk-item { background: var(--bg-dark); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); overflow: hidden; transition: border-color 0.2s; }
+        .chunk-item:hover { border-color: var(--primary); }
+        .chunk-header { display: flex; align-items: center; padding: 10px 14px; gap: 10px; }
+        .chunk-header:hover { background: rgba(91,141,239,0.05); }
+        .chunk-chevron { font-size: 14px; color: var(--text-secondary); flex-shrink: 0; }
+        .chunk-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+        .chunk-title-area { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .chunk-title { font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+        .chunk-sub { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.7; }
+        .chunk-badge.manual { background: rgba(156,39,176,0.2); color: #ce93d8; }
+        .chunk-badge.url { background: rgba(46,204,113,0.2); color: #2ecc71; }
+        .chunk-badge.github { background: rgba(139,92,246,0.2); color: #b39ddb; }
+        .chunk-badge.dir, .chunk-badge.file { background: rgba(243,156,18,0.2); color: #f39c12; }
+        .chunk-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
+        .chunk-title { font-size: 13px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .chunk-date { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
+        .chunk-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        .chunk-actions .btn { padding: 4px 8px; font-size: 11px; }
+        .chunk-count { font-size: 12px; color: var(--text-secondary); padding: 0 14px 8px; }
+        .chunk-empty { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+        .chunk-empty i { font-size: 40px; margin-bottom: 12px; display: block; opacity: 0.5; }
+        .chunk-search { display: flex; gap: 8px; padding: 0 14px 12px; }
+        .chunk-search .form-control { flex: 1; }
 
         /* Loading */
         .loading { text-align: center; padding: 30px; color: var(--text-secondary); }
@@ -186,6 +255,46 @@
         /* Grid */
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
         @media (max-width: 1024px) { .grid-2 { grid-template-columns: 1fr; } }
+
+        /* Ingest File List */
+        .ingest-file-list { max-height: 320px; overflow-y: auto; margin-top: 8px; border-radius: 8px; border: 1px solid var(--border); }
+        .ingest-file-item { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
+        .ingest-file-item:last-child { border-bottom: none; }
+        .ingest-file-item:hover { background: var(--bg-hover); }
+        .ingest-file-path { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ingest-file-status { font-size: 11px; color: var(--success); flex-shrink: 0; }
+        .text-success { color: var(--success) !important; }
+        .text-warning { color: var(--warning) !important; }
+
+        /* Pagination */
+        .pagination { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 16px; }
+        .pagination-btn { padding: 6px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .pagination-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); border-color: var(--primary); }
+        .pagination-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pagination-info { font-size: 13px; color: var(--text-secondary); padding: 0 12px; }
+        .pagination-jump { display: flex; align-items: center; gap: 6px; }
+        .pagination-jump input { width: 48px; padding: 5px 8px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 13px; text-align: center; }
+        .pagination-jump input:focus { outline: none; border-color: var(--primary); }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+        .modal-overlay.show { display: flex; }
+        .modal { background: var(--bg-card); border-radius: var(--radius); width: min(720px, 90vw); max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
+        .modal-header { display: flex; align-items: flex-start; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg-dark); }
+        .modal-header-left { flex: 1; min-width: 0; }
+        .modal-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .modal-meta { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .modal-meta-item { display: flex; align-items: center; gap: 4px; }
+        .modal-meta-item i { font-size: 12px; }
+        .modal-body { flex: 1; overflow-y: auto; padding: 20px; }
+        .modal-body-text { font-size: 14px; color: var(--text-primary); line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+        .modal-body-text::-webkit-scrollbar { width: 5px; }
+        .modal-body-text::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); flex-shrink: 0; }
+        .modal-source { font-size: 12px; color: var(--text-secondary); word-break: break-all; display: flex; align-items: flex-start; gap: 6px; }
+        .modal-source i { margin-top: 2px; flex-shrink: 0; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 4px; border-radius: 4px; line-height: 1; transition: color 0.2s; flex-shrink: 0; }
+        .modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -208,16 +317,20 @@
         </div>
         <nav>
             <div class="nav-item active" onclick="showPage('dashboard')" data-page="dashboard">
-                <i class="ri-dashboard-line"></i><span>总览</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span>总览</span>
             </div>
             <div class="nav-item" onclick="showPage('query')" data-page="query">
-                <i class="ri-chat-question-line"></i><span>智能问答</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>智能问答</span>
             </div>
             <div class="nav-item" onclick="showPage('graph')" data-page="graph">
-                <i class="ri-network-chart-line"></i><span>知识图谱</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><line x1="12" y1="7" x2="5" y2="10"/><line x1="12" y1="7" x2="19" y2="10"/><line x1="5" y1="14" x2="5" y2="17"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="5" y1="12" x2="12" y2="10"/><line x1="19" y1="12" x2="12" y2="10"/></svg>
+                <span>知识图谱</span>
             </div>
             <div class="nav-item" onclick="showPage('manage')" data-page="manage">
-                <i class="ri-settings-3-line"></i><span>知识管理</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                <span>知识管理</span>
             </div>
         </nav>
         <div class="sidebar-footer">
@@ -231,7 +344,10 @@
         <div id="page-dashboard" class="page active">
             <div class="top-bar">
                 <div>
-                    <h1 class="page-title">知识库总览</h1>
+                    <h1 class="page-title">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        知识库总览
+                    </h1>
                     <p class="page-subtitle">基于 DeepSeek 的智能知识问答系统</p>
                 </div>
                 <button class="btn-add" onclick="openDrawer()">
@@ -302,7 +418,10 @@
         <div id="page-query" class="page">
             <div class="top-bar">
                 <div>
-                    <h1 class="page-title">智能问答</h1>
+                    <h1 class="page-title">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
+                        智能问答
+                    </h1>
                     <p class="page-subtitle">基于知识库的智能问答系统</p>
                 </div>
             </div>
@@ -334,7 +453,10 @@
         <div id="page-graph" class="page">
             <div class="top-bar">
                 <div>
-                    <h1 class="page-title">知识图谱</h1>
+                    <h1 class="page-title">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.8"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><line x1="12" y1="7" x2="5" y2="10"/><line x1="12" y1="7" x2="19" y2="10"/><line x1="5" y1="14" x2="5" y2="17"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="5" y1="12" x2="12" y2="10"/><line x1="19" y1="12" x2="12" y2="10"/></svg>
+                        知识图谱
+                    </h1>
                     <p class="page-subtitle">可视化展示知识之间的关联关系</p>
                 </div>
             </div>
@@ -344,6 +466,30 @@
                     <button class="btn btn-secondary" onclick="loadGraph()" style="padding:8px 16px;font-size:13px;">
                         <i class="ri-refresh-line"></i> 刷新
                     </button>
+                </div>
+                <!-- Graph Filter Bar -->
+                <div class="graph-filter-bar" id="graph-filter-bar">
+                    <div class="graph-filter-left">
+                        <i class="ri-search-line" style="color:var(--text-secondary);font-size:14px;"></i>
+                        <input type="text" id="graph-filter-input" class="graph-filter-input" placeholder="搜索节点名称..." oninput="applyGraphFilter()">
+                    </div>
+                    <div class="graph-filter-right">
+                        <span style="font-size:12px;color:var(--text-secondary);margin-right:6px;">类型：</span>
+                        <label class="graph-filter-toggle active" data-type="chunk" onclick="toggleGraphType(this)">
+                            <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#9c27b0"/></svg> 知识条目
+                        </label>
+                        <label class="graph-filter-toggle active" data-type="entity" onclick="toggleGraphType(this)">
+                            <svg width="10" height="10"><polygon points="5,0 10,5 5,10 0,5" fill="#5b8def"/></svg> 实体
+                        </label>
+                        <label class="graph-filter-toggle active" data-type="source" onclick="toggleGraphType(this)">
+                            <svg width="12" height="8"><rect x="1" y="1" width="10" height="6" rx="2" fill="#2ecc71"/></svg> 来源
+                        </label>
+                        <span style="font-size:12px;color:var(--text-secondary);margin-left:10px;margin-right:4px;">滚轮：</span>
+                        <label class="graph-filter-toggle" id="wheel-zoom-toggle" onclick="toggleWheelZoom(this)" title="开启后可用鼠标滚轮缩放图谱">
+                            <svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> 滚轮缩放
+                        </label>
+                        <span id="graph-filter-count" style="font-size:12px;color:var(--text-secondary);margin-left:8px;"></span>
+                    </div>
                 </div>
                 <div class="card-body" style="padding:0;">
                     <div class="graph-container">
@@ -369,9 +515,20 @@
                             <span><svg width="12" height="12"><polygon points="6,0 12,6 6,12 0,6" fill="#5b8def"/></svg> 实体概念</span>
                             <span><svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="3" fill="#2ecc71"/></svg> 来源分类</span>
                             <span id="graph-stat" style="color:var(--text-secondary);"></span>
+                            <span class="graph-legend-hint"><i class="ri-mouse-line"></i>点击节点查看关联</span>
                         </div>
                     </div>
                 </div>
+            </div>
+            <!-- Related docs panel (shown when node selected) -->
+            <div class="card" id="graph-related-panel" style="display:none; margin-top:16px;">
+                <div class="card-header">
+                    <h2><i class="ri-links-line"></i> 关联文档 <span id="graph-related-count"></span></h2>
+                    <button class="btn btn-secondary" onclick="clearGraphSelection()" style="padding:8px 16px;font-size:13px;">
+                        <i class="ri-close-line"></i> 清除
+                    </button>
+                </div>
+                <div class="card-body" id="graph-related-list"></div>
             </div>
         </div>
 
@@ -379,7 +536,10 @@
         <div id="page-manage" class="page">
             <div class="top-bar">
                 <div>
-                    <h1 class="page-title">知识管理</h1>
+                    <h1 class="page-title">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        知识管理
+                    </h1>
                     <p class="page-subtitle">管理知识库中的所有条目</p>
                 </div>
             </div>
@@ -390,8 +550,21 @@
                         <i class="ri-refresh-line"></i> 刷新
                     </button>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding-top:12px;">
+                    <div class="chunk-search">
+                        <input type="text" class="form-control" id="chunk-search-input" placeholder="搜索知识条目..." oninput="filterChunks(this.value)">
+                        <select class="form-control" id="chunk-type-filter" style="max-width:140px;" onchange="filterChunks(document.getElementById('chunk-search-input').value)">
+                            <option value="">全部来源</option>
+                            <option value="manual">手动输入</option>
+                            <option value="url">网页</option>
+                            <option value="github">GitHub</option>
+                            <option value="minimax">MiniMax</option>
+                            <option value="dir">目录</option>
+                            <option value="file">文件</option>
+                        </select>
+                    </div>
                     <div id="chunks-list" class="chunks-list"><div class="loading"><i class="ri-loader-4-line"></i></div></div>
+                    <div class="pagination" id="chunk-pagination"></div>
                 </div>
             </div>
             <div style="text-align:center;margin-top:24px;">
@@ -401,6 +574,29 @@
             </div>
         </div>
     </main>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <div class="modal-header-left">
+                    <div class="modal-title" id="modal-title"></div>
+                    <div class="modal-meta">
+                        <span class="modal-meta-item" id="modal-badge-wrap"></span>
+                        <span class="modal-meta-item" id="modal-date-wrap"></span>
+                        <span class="modal-meta-item" id="modal-length-wrap"></span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal()"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-body-text" id="modal-body-text"></div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-source" id="modal-source"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Drawer Overlay -->
     <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
@@ -524,6 +720,9 @@
     <script>
         let currentTab = 'manual';
         let allChunks = [];
+        window.currentSources = [];
+        let chunkPage = 1;
+        const PAGE_SIZE = 20;
 
         // Navigation
         function showPage(page) {
@@ -548,6 +747,65 @@
             document.getElementById('drawer').classList.remove('show');
             document.getElementById('drawer-overlay').classList.remove('show');
             document.body.style.overflow = '';
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.remove('show');
+            document.body.style.overflow = '';
+        }
+
+        function openModal(title, badgeHtml, body, source, date, length) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-badge-wrap').innerHTML = badgeHtml;
+            document.getElementById('modal-date-wrap').innerHTML = date ? `<i class="ri-time-line"></i>${date}` : '';
+            document.getElementById('modal-length-wrap').innerHTML = length ? `<i class="ri-file-text-line"></i>${length} 字符` : '';
+            document.getElementById('modal-body-text').textContent = body;
+            document.getElementById('modal-source').innerHTML = source ? `<i class="ri-link"></i>${source}` : '';
+            document.getElementById('modal-overlay').classList.add('show');
+            document.body.style.overflow = 'hidden';
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        function srcBadge(src) {
+            if (src.startsWith('manual')) return 'manual';
+            if (src.startsWith('url')) return 'url';
+            if (src.startsWith('github')) return 'github';
+            if (src.startsWith('minimax')) return 'minimax';
+            if (src.startsWith('dir')) return 'dir';
+            if (src.startsWith('file')) return 'file';
+            return 'manual';
+        }
+        function srcBadgeName(src) {
+            if (src.startsWith('manual')) return '手动输入';
+            if (src.startsWith('url')) return '网页';
+            if (src.startsWith('github')) return 'GitHub';
+            if (src.startsWith('minimax')) return 'MiniMax';
+            if (src.startsWith('dir')) return '目录';
+            if (src.startsWith('file')) return '文件';
+            return '其他';
+        }
+        function srcName(src) {
+            const parts = src.split(':');
+            return parts.length > 1 ? parts[1] : src;
+        }
+        function srcBadgeHtml(src) {
+            const b = srcBadge(src);
+            const bn = srcBadgeName(src);
+            return `<span class="source-badge ${b}">${bn}</span>`;
+        }
+
+        function openSourceModal(idx) {
+            const s = currentSources[idx];
+            if (!s) return;
+            const src = s.source || '';
+            const meta = s.metadata || {};
+            const title = meta.title || srcName(src) || '未命名';
+            const body = s.text || '';
+            const badgeHtml = srcBadgeHtml(src);
+            openModal(title, badgeHtml, body, src, null, body.length);
         }
 
         function switchDrawerTab(tab, btn) {
@@ -610,6 +868,174 @@
             });
         }
 
+        function filterChunks(search) {
+            chunkPage = 1;
+            const typeFilter = document.getElementById('chunk-type-filter') ? document.getElementById('chunk-type-filter').value : '';
+            renderChunks(allChunks, search, typeFilter);
+        }
+
+        function toggleChunk(idx) {
+            const item = document.getElementById('chunk-' + idx);
+            if (item) item.classList.toggle('open');
+        }
+
+        function deleteChunk(chunkId, idx) {
+            if (!confirm("确定删除这条知识？")) return;
+            fetch("/api/delete/" + encodeURIComponent(chunkId), {method:'DELETE'}).then(r=>r.json()).then(d=>{
+                if (d.success) {
+                    loadAllChunks();
+                    loadChunks();
+                    loadStats();
+                } else {
+                    alert(d.error || '删除失败');
+                }
+            });
+        }
+
+        function getTitleInfo(c) {
+            const src = c.source || '';
+            const meta = c.metadata || {};
+            const bareManual = src === 'manual' || src === 'manual:';
+            if (bareManual) {
+                return { main: '手动输入', sub: '', isDir: false };
+            }
+            // dir: show filename + directory
+            if (src.startsWith('dir:')) {
+                const fileName = meta.relative_path || meta.path || '';
+                const dirPath = meta.directory || src.split(':')[1] || '';
+                return { main: fileName, sub: dirPath, isDir: true };
+            }
+            // url: show meta title or domain
+            if (src.startsWith('url:')) {
+                const metaTitle = meta.title;
+                const domain = src.replace('url:', '').replace(/^https?:\/\//, '').split('/')[0];
+                return { main: metaTitle || domain, sub: metaTitle ? domain : '', isDir: false };
+            }
+            // minimax/github/file: show relative path or name
+            const parts = src.split(':');
+            const name = parts.length > 1 ? parts[1] : src;
+            const metaTitle = meta.title;
+            return { main: metaTitle || name || '未命名', sub: '', isDir: false };
+        }
+
+        function renderChunks(chunks, search, typeFilter) {
+            const list = document.getElementById('chunks-list');
+            const pager = document.getElementById('chunk-pagination');
+            if (!list) return;
+            search = (search || '').toLowerCase();
+            const filtered = chunks.filter(c => {
+                const matchSearch = !search ||
+                    (c.source || '').toLowerCase().includes(search) ||
+                    (c.preview || '').toLowerCase().includes(search) ||
+                    (c.text || '').toLowerCase().includes(search);
+                const src = c.source || '';
+                const matchType = !typeFilter || src.startsWith(typeFilter + ':') || src === typeFilter;
+                return matchSearch && matchType;
+            });
+            window._filteredChunks = filtered;
+
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            if (chunkPage > totalPages) chunkPage = totalPages;
+
+            const start = (chunkPage - 1) * PAGE_SIZE;
+            const pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+            const badge = (src) => {
+                if (src.startsWith('manual')) return 'manual';
+                if (src.startsWith('url')) return 'url';
+                if (src.startsWith('github')) return 'github';
+                if (src.startsWith('minimax')) return 'minimax';
+                if (src.startsWith('dir')) return 'dir';
+                if (src.startsWith('file')) return 'file';
+                return 'manual';
+            };
+            const badgeName = (src) => {
+                if (src.startsWith('manual')) return '手动输入';
+                if (src.startsWith('url')) return '网页';
+                if (src.startsWith('github')) return 'GitHub';
+                if (src.startsWith('minimax')) return 'MiniMax';
+                if (src.startsWith('dir')) return '目录';
+                if (src.startsWith('file')) return '文件';
+                return '其他';
+            };
+            if (!filtered.length) {
+                list.innerHTML = '<div class="chunk-empty"><i class="ri-inbox-line"></i>暂无匹配的知识条目</div>';
+                pager.innerHTML = '';
+                return;
+            }
+
+            list.innerHTML = `<div class="chunk-count">共 ${filtered.length} 条（第 ${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} 条）</div>` +
+                pageItems.map((c, i) => {
+                    const src = c.source || '';
+                    const b = badge(src);
+                    const bn = badgeName(src);
+                    const ti = getTitleInfo(c);
+                    const date = c.created_at ? new Date(c.created_at).toLocaleString('zh-CN') : '';
+                    const globalIdx = start + i;
+                    return `<div class="chunk-item" id="chunk-${globalIdx}">
+                        <div class="chunk-header" onclick="openChunkModal(${globalIdx})" style="cursor:pointer;">
+                            <i class="chunk-chevron ri-arrow-right-s-line"></i>
+                            <span class="chunk-badge ${b}">${bn}</span>
+                            <span class="chunk-title-area">
+                                <span class="chunk-title" title="${ti.main}">${ti.main}</span>
+                                ${ti.sub ? `<span class="chunk-sub" title="${ti.sub}">${ti.sub}</span>` : ''}
+                            </span>
+                            <span class="chunk-date">${date}</span>
+                            <div class="chunk-actions" onclick="event.stopPropagation()">
+                                <button class="btn btn-secondary" onclick="deleteChunk('${c.id}',${globalIdx})" title="删除" style="color:var(--danger);padding:3px 8px;">
+                                    <i class="ri-delete-bin-line"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+
+            // Pagination controls
+            if (totalPages <= 1) {
+                pager.innerHTML = '';
+                return;
+            }
+            pager.innerHTML = `
+                <button class="pagination-btn" onclick="chunkGoTo(${chunkPage - 1})" ${chunkPage <= 1 ? 'disabled' : ''}>
+                    <i class="ri-arrow-left-s-line"></i> 上一页
+                </button>
+                <span class="pagination-info">第 ${chunkPage} / ${totalPages} 页</span>
+                <button class="pagination-btn" onclick="chunkGoTo(${chunkPage + 1})" ${chunkPage >= totalPages ? 'disabled' : ''}>
+                    下一页 <i class="ri-arrow-right-s-line"></i>
+                </button>
+                <div class="pagination-jump">
+                    <input type="number" id="chunk-jump-input" min="1" max="${totalPages}" value="${chunkPage}" onkeydown="if(event.key==='Enter')chunkJump(${totalPages})">
+                    <button class="pagination-btn" onclick="chunkJump(${totalPages})">跳转</button>
+                </div>
+            `;
+        }
+
+        function chunkGoTo(p) {
+            chunkPage = p;
+            const search = document.getElementById('chunk-search-input') ? document.getElementById('chunk-search-input').value : '';
+            const typeFilter = document.getElementById('chunk-type-filter') ? document.getElementById('chunk-type-filter').value : '';
+            renderChunks(allChunks, search, typeFilter);
+        }
+
+        function chunkJump(totalPages) {
+            const input = document.getElementById('chunk-jump-input');
+            if (!input) return;
+            let p = parseInt(input.value, 10);
+            if (isNaN(p) || p < 1) p = 1;
+            if (p > totalPages) p = totalPages;
+            chunkGoTo(p);
+        }
+
+        function openChunkModal(idx) {
+            const c = window._filteredChunks ? window._filteredChunks[idx] : null;
+            if (!c) return;
+            const src = c.source || '';
+            const ti = getTitleInfo(c);
+            const text = c.text || '';
+            const date = c.created_at ? new Date(c.created_at).toLocaleString('zh-CN') : '';
+            openModal(ti.main, srcBadgeHtml(src), text, src, date, text.length);
+        }
+
         // Submit handlers
         function showResult(id, type, msg) {
             document.getElementById(id).innerHTML = `<div class="message message-${type}"><i class="ri-${type==='success'?'check':type==='error'?'close':''}-line"></i> ${msg}</div>`;
@@ -644,8 +1070,29 @@
             showResult('result-github', 'info', '抓取中...');
             fetch("/api/ingest/github", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({url})})
                 .then(r=>r.json()).then(d=>{
-                    if (d.error) showResult('result-github', 'error', d.error);
-                    else showResult('result-github', 'success', `找到 ${d.files_found} 个文件，处理了 ${d.files_processed} 个`);
+                    if (d.error) { showResult('result-github', 'error', d.error); return; }
+                    const files = d.files || [];
+                    const errs = d.errors || [];
+                    let html = `<div class="message message-success"><i class="ri-check-line"></i> 找到 <strong>${d.files_found}</strong> 个文件，成功处理 <strong>${d.files_processed}</strong> 个`;
+                    if (errs.length > 0) html += `（${errs.length} 个失败）`;
+                    html += `</div>`;
+                    if (files.length > 0) {
+                        html += `<div class="ingest-file-list">`;
+                        files.forEach(f => {
+                            const status = f.status === 'saved' ? '已导入' : '已存在';
+                            const color = f.status === 'saved' ? 'var(--success)' : 'var(--warning)';
+                            html += `<div class="ingest-file-item">
+                                <i class="ri-file-text-line" style="color:var(--text-secondary);margin-right:8px;"></i>
+                                <span class="ingest-file-path">${f.path}</span>
+                                <span class="ingest-file-status" style="color:${color};">${status}</span>
+                            </div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    if (errs.length > 0) {
+                        html += `<div style="margin-top:8px;font-size:12px;color:var(--text-secondary);">失败文件: ${errs.slice(0,3).join('、')}</div>`;
+                    }
+                    document.getElementById('result-github').innerHTML = html;
                 }).catch(e=>showResult('result-github', 'error', e.message))
                 .finally(()=>{ loadAllChunks(); loadStats(); });
         }
@@ -657,8 +1104,26 @@
             showResult('result-directory', 'info', '扫描中...');
             fetch("/api/ingest/directory", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({directory:dir, extensions:exts})})
                 .then(r=>r.json()).then(d=>{
-                    if (d.error) showResult('result-directory', 'error', d.error);
-                    else showResult('result-directory', 'success', `扫描完成！找到 ${d.files_found} 个文件`);
+                    if (d.error) { showResult('result-directory', 'error', d.error); return; }
+                    const files = d.files || [];
+                    const skipped = d.files_found - files.length;
+                    let html = `<div class="message message-success"><i class="ri-check-line"></i> 扫描完成！共找到 <strong>${d.files_found}</strong> 个文件`;
+                    if (skipped > 0) html += `（显示前 ${files.length} 条）`;
+                    html += `</div>`;
+                    if (files.length > 0) {
+                        html += `<div class="ingest-file-list">`;
+                        files.forEach(f => {
+                            const icon = f.status === 'saved' ? 'ri-file-text-fill text-success' : 'ri-file-warning-fill text-warning';
+                            const status = f.status === 'saved' ? '已导入' : '已存在';
+                            html += `<div class="ingest-file-item">
+                                <i class="ri-file-text-line" style="color:var(--text-secondary);margin-right:8px;"></i>
+                                <span class="ingest-file-path">${f.path}</span>
+                                <span class="ingest-file-status">${status}</span>
+                            </div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    document.getElementById('result-directory').innerHTML = html;
                 }).catch(e=>showResult('result-directory', 'error', e.message))
                 .finally(()=>{ loadAllChunks(); loadStats(); });
         }
@@ -695,9 +1160,52 @@
                     else {
                         let html = `<div class="answer-box">${d.answer}</div>`;
                         if (d.sources && d.sources.length > 0) {
-                            html += `<div class="message message-info" style="margin-top:12px;"><strong>参考来源 (${d.chunks_matched} 个相关)：</strong><br>`;
-                            d.sources.forEach(s=>html+=`<small>${s.source}: ${s.text.substring(0,80)}...</small><br>`);
-                            html += '</div>';
+                            const badge = (src) => {
+                                if (src.startsWith('manual')) return 'manual';
+                                if (src.startsWith('url')) return 'url';
+                                if (src.startsWith('github')) return 'github';
+                                if (src.startsWith('minimax')) return 'minimax';
+                                if (src.startsWith('dir')) return 'dir';
+                                if (src.startsWith('file')) return 'file';
+                                return 'manual';
+                            };
+                            const badgeName = (src) => {
+                                if (src.startsWith('manual')) return '手动输入';
+                                if (src.startsWith('url')) return '网页';
+                                if (src.startsWith('github')) return 'GitHub';
+                                if (src.startsWith('minimax')) return 'MiniMax';
+                                if (src.startsWith('dir')) return '目录';
+                                if (src.startsWith('file')) return '文件';
+                                return '其他';
+                            };
+                            const name = (src) => {
+                                const parts = src.split(':');
+                                return parts.length > 1 ? parts[1] : src;
+                            };
+                            html += `<div class="source-list">`;
+                            html += `<div class="source-list-header">`;
+                            html += `<strong style="font-size:13px;color:var(--text-secondary);">📄 参考来源</strong>`;
+                            html += `<span style="font-size:11px;color:var(--text-secondary);">点击查看详情（共 ${d.sources.length} 条）</span>`;
+                            html += `</div>`;
+                            d.sources.forEach((s, i) => {
+                                const src = s.source || '';
+                                const b = badge(src);
+                                const bn = badgeName(src);
+                                const nm = name(src);
+                                const preview = (s.text || '').substring(0, 80);
+                                const meta = s.metadata || {};
+                                const title = meta.title || nm;
+                                html += `<div class="source-item" id="src-${i}" onclick="openSourceModal(${i})">`;
+                                html += `<div class="source-header">`;
+                                html += `<i class="source-chevron ri-arrow-right-s-line"></i>`;
+                                html += `<span class="source-badge ${b}">${bn}</span>`;
+                                html += `<span class="source-name" title="${title}">${title}</span>`;
+                                html += `<span class="source-preview">${preview}...</span>`;
+                                html += `</div>`;
+                                html += `</div>`;
+                            });
+                            html += `</div>`;
+                            currentSources = d.sources;
                         }
                         document.getElementById('query-result').innerHTML = html;
                     }
@@ -705,12 +1213,165 @@
                 .finally(()=>{ btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-line"></i> 查询'; });
         }
 
+        // Toggle source item expand/collapse
+        function toggleSource(idx) {
+            const item = document.getElementById('src-' + idx);
+            if (item) {
+                item.classList.toggle('open');
+            }
+        }
+
         // Graph — D3 force simulation
         let graphSimulation = null;
         let graphSvg = null;
         let graphZoom = null;
+        let graphNodes = null;
+        let graphLinks = null;
+        let graphSelectedId = null;
+        let _graphNodesData = null;
+        let _graphLinksData = null;
+        let _graphFilterText = '';
+        let _graphFilterTypes = { chunk: true, entity: true, source: true };
+        let _graphForcedVisible = new Set(); // nodes forced visible (selected + true neighbors)
+        let _wheelZoomEnabled = false; // wheel zoom toggle state
+
+        function toggleWheelZoom(el) {
+            const svgEl = document.getElementById('graph-svg');
+            if (!svgEl || !graphZoom) return;
+            _wheelZoomEnabled = !_wheelZoomEnabled;
+            if (_wheelZoomEnabled) {
+                el.classList.add('active');
+                // Re-attach wheel listener via D3 namespaced event
+                d3.select(svgEl).on('wheel.zoom', null); // clear first
+                d3.select(svgEl).call(graphZoom);
+            } else {
+                el.classList.remove('active');
+                // Remove wheel listener (D3 namespaced)
+                d3.select(svgEl).on('wheel.zoom', null);
+            }
+        }
+
+        // Graph filter functions
+        function fitGraphToVisibleNodes() {
+            if (!_graphNodesData) return;
+            const svgEl = document.getElementById('graph-svg');
+            if (!svgEl) return;
+            const container = document.querySelector('.graph-container');
+            if (!container) return;
+            const W = container.clientWidth;
+            const H = container.clientHeight;
+
+            // Gather nodes with settled positions that match current filter
+            const visible = _graphNodesData.filter(d => {
+                if (d.x == null || d.y == null) return false;
+                if (_graphForcedVisible.has(d.id)) return true;
+                if (!_graphFilterTypes[d.type]) return false;
+                if (_graphFilterText && !(d.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())) return false;
+                return true;
+            });
+            if (visible.length === 0) return;
+
+            const padding = 60;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            visible.forEach(n => {
+                const r = n.type === 'source' ? 22 : n.type === 'chunk' ? 14 : 10;
+                if (n.x - r < minX) minX = n.x - r;
+                if (n.x + r > maxX) maxX = n.x + r;
+                if (n.y - r < minY) minY = n.y - r;
+                if (n.y + r > maxY) maxY = n.y + r;
+            });
+
+            const graphW = maxX - minX;
+            const graphH = maxY - minY;
+            if (graphW <= 0 || graphH <= 0) return;
+
+            const scaleX = (W - padding * 2) / graphW;
+            const scaleY = (H - padding * 2) / graphH;
+            const scale = Math.min(scaleX, scaleY, 2.5);
+            const tx = (W - graphW * scale) / 2 - minX * scale;
+            const ty = (H - graphH * scale) / 2 - minY * scale;
+
+            if (graphZoom) {
+                d3.select(svgEl).transition().duration(500).call(
+                    graphZoom.transform,
+                    d3.zoomIdentity.translate(tx, ty).scale(scale)
+                );
+            }
+        }
+
+        function applyGraphFilter() {
+            if (!graphNodes || !graphLinks || !_graphNodesData) return;
+            _graphFilterText = document.getElementById('graph-filter-input') ? document.getElementById('graph-filter-input').value : '';
+            // Re-compute forced visible (selected + true neighbors)
+            if (graphSelectedId) {
+                const connectedIds = new Set([graphSelectedId]);
+                _graphLinksData.forEach(l => {
+                    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                    if (sid === graphSelectedId) connectedIds.add(tid);
+                    if (tid === graphSelectedId) connectedIds.add(sid);
+                });
+                _graphForcedVisible = connectedIds;
+            } else {
+                _graphForcedVisible = new Set();
+            }
+            // Apply to D3 selections
+            const allNodes = _graphNodesData;
+            const allLinks = _graphLinksData;
+            graphNodes.attr('display', d => {
+                if (_graphForcedVisible.has(d.id)) return null;
+                if (!_graphFilterTypes[d.type]) return 'none';
+                if (!_graphFilterText) return null;
+                return (d.label || '').toLowerCase().includes(_graphFilterText.toLowerCase()) ? null : 'none';
+            });
+            graphLinks.attr('display', d => {
+                const sid = typeof d.source === 'object' ? d.source.id : d.source;
+                const tid = typeof d.target === 'object' ? d.target.id : d.target;
+                const sNode = allNodes.find(x => x.id === sid);
+                const tNode = allNodes.find(x => x.id === tid);
+                const sVisible = _graphForcedVisible.has(sid) || (_graphFilterTypes[sNode?.type] && (!_graphFilterText || (sNode?.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())));
+                const tVisible = _graphForcedVisible.has(tid) || (_graphFilterTypes[tNode?.type] && (!_graphFilterText || (tNode?.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())));
+                return sVisible && tVisible ? null : 'none';
+            });
+            // Update count
+            const visibleCount = graphNodes.filter(d => {
+                if (_graphForcedVisible.has(d.id)) return true;
+                if (!_graphFilterTypes[d.type]) return false;
+                if (!_graphFilterText) return true;
+                return (d.label || '').toLowerCase().includes(_graphFilterText.toLowerCase());
+            }).size();
+            const total = _graphNodesData.length;
+            const countEl = document.getElementById('graph-filter-count');
+            if (countEl) countEl.textContent = `显示 ${visibleCount} / ${total} 节点`;
+
+            // Auto-zoom to visible nodes
+            fitGraphToVisibleNodes();
+        }
+
+        function toggleGraphType(el) {
+            const type = el.dataset.type;
+            const isActive = el.classList.contains('active');
+            if (isActive) {
+                el.classList.remove('active');
+                _graphFilterTypes[type] = false;
+            } else {
+                el.classList.add('active');
+                _graphFilterTypes[type] = true;
+            }
+            applyGraphFilter();
+        }
 
         function loadGraph() {
+            // Reset filter state
+            _graphFilterText = '';
+            _graphForcedVisible = new Set();
+            graphSelectedId = null;
+            const filterInput = document.getElementById('graph-filter-input');
+            if (filterInput) filterInput.value = '';
+            ['chunk','entity','source'].forEach(t => {
+                const el = document.querySelector(`[data-type="${t}"]`);
+                if (el && !el.classList.contains('active')) el.classList.add('active');
+            });
             const container = document.querySelector('.graph-container');
             const svgEl = document.getElementById('graph-svg');
             if (!svgEl) return;
@@ -736,6 +1397,22 @@
                 // Deep copy for D3 mutation
                 const nodes = data.nodes.map(n => ({...n}));
                 const links = data.links.map(l => ({...l}));
+                _graphNodesData = nodes;
+                _graphLinksData = links;
+
+                // Filter: node visible if matches filter OR is forced visible
+                function isNodeVisible(n) {
+                    if (_graphForcedVisible.has(n.id)) return true;
+                    if (!_graphFilterTypes[n.type]) return false;
+                    if (!_graphFilterText) return true;
+                    const label = (n.label || '').toLowerCase();
+                    return label.includes(_graphFilterText.toLowerCase());
+                }
+                function isLinkVisible(l) {
+                    const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                    const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                    return isNodeVisible(nodes.find(x => x.id === sid)) || isNodeVisible(nodes.find(x => x.id === tid));
+                }
 
                 // Color map
                 const typeColor = { chunk: '#9c27b0', entity: '#5b8def', source: '#2ecc71' };
@@ -760,11 +1437,23 @@
 
                 const g = svg.append('g');
 
-                // Zoom behavior
+                // Transparent background rect — catches clicks on empty areas (not on nodes)
+                g.append('rect')
+                    .attr('id', 'graph-bg-click')
+                    .attr('x', -W * 10)
+                    .attr('y', -H * 10)
+                    .attr('width', W * 20)
+                    .attr('height', H * 20)
+                    .attr('fill', 'transparent')
+                    .attr('pointer-events', 'all');
+
+                // Zoom behavior — wheel zoom disabled by default (only drag + buttons)
                 graphZoom = d3.zoom()
                     .scaleExtent([0.2, 4])
                     .on('zoom', (event) => g.attr('transform', event.transform));
                 svg.call(graphZoom);
+                // Remove D3's wheel listener (namespaced: wheel.zoom)
+                svg.on('wheel.zoom', null);
 
                 // Links
                 const link = g.append('g')
@@ -773,7 +1462,8 @@
                     .join('line')
                     .attr('stroke', '#334')
                     .attr('stroke-width', 1)
-                    .attr('stroke-opacity', 0.6);
+                    .attr('stroke-opacity', 0.6)
+                    .attr('display', d => isLinkVisible(d) ? null : 'none');
 
                 // Node groups
                 const node = g.append('g')
@@ -791,12 +1481,13 @@
                             if (!event.active) graphSimulation.alphaTarget(0);
                             d.fx = null; d.fy = null;
                         })
-                    );
+                    )
+                    .attr('display', d => isNodeVisible(d) ? null : 'none');
 
                 // Node shapes: chunks=circle, sources=rect, entities=diamond
                 node.filter(d => d.type === 'chunk')
                     .append('circle')
-                    .attr('r', 8)
+                    .attr('r', 14)
                     .attr('fill', '#9c27b0')
                     .attr('stroke', '#ce93d8')
                     .attr('stroke-width', 2)
@@ -804,9 +1495,9 @@
 
                 node.filter(d => d.type === 'source')
                     .append('rect')
-                    .attr('x', -18).attr('y', -12)
-                    .attr('width', 36).attr('height', 24)
-                    .attr('rx', 6)
+                    .attr('x', -22).attr('y', -14)
+                    .attr('width', 44).attr('height', 28)
+                    .attr('rx', 8)
                     .attr('fill', '#2ecc71')
                     .attr('stroke', '#a9dfbf')
                     .attr('stroke-width', 2)
@@ -814,7 +1505,7 @@
 
                 node.filter(d => d.type === 'entity')
                     .append('polygon')
-                    .attr('points', '0,-7 7,0 0,7 -7,0')
+                    .attr('points', '0,-10 10,0 0,10 -10,0')
                     .attr('fill', '#5b8def')
                     .attr('stroke', '#90caf9')
                     .attr('stroke-width', 1.5)
@@ -827,7 +1518,12 @@
                     .attr('font-size', 10)
                     .attr('fill', '#aaa')
                     .attr('pointer-events', 'none')
-                    .text(d => d.label ? d.label.substring(0, 15) : d.id.substring(0, 12));
+                    .text(d => {
+                        if (!d.label) return '';
+                        // If label looks like a chunk ID, hide it
+                        if (/^chunk-\d+-[a-f0-9]+$/i.test(d.label)) return '';
+                        return d.label.substring(0, 18);
+                    });
 
                 // Tooltip
                 const tooltip = document.getElementById('graph-tooltip');
@@ -890,12 +1586,15 @@
                     tooltip.style.display = 'none';
                 });
 
+                // Store SVG reference before simulation (needed by on('end') auto-fit)
+                graphSvg = svg;
+
                 // Force simulation — balanced layout
                 graphSimulation = d3.forceSimulation(nodes)
                     .force('link', d3.forceLink(links).id(d => d.id).distance(d => d.type === 'source' ? 120 : 60).strength(0.6))
                     .force('charge', d3.forceManyBody().strength(d => d.type === 'entity' ? -80 : -200))
                     .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05))
-                    .force('collision', d3.forceCollide().radius(d => d.type === 'chunk' ? 24 : d.type === 'source' ? 30 : 14))
+                    .force('collision', d3.forceCollide().radius(d => d.type === 'chunk' ? 28 : d.type === 'source' ? 36 : 16))
                     .force('x', d3.forceX(W / 2).strength(0.02))
                     .force('y', d3.forceY(H / 2).strength(0.02))
                     .alphaDecay(0.02)
@@ -906,23 +1605,241 @@
                             .attr('x2', d => d.target.x)
                             .attr('y2', d => d.target.y);
                         node.attr('transform', d => `translate(${d.x},${d.y})`);
+                    })
+                    .on('end', () => {
+                        // Auto-fit all nodes to viewport after simulation settles
+                        fitGraphToVisibleNodes();
                     });
 
-                graphSvg = svg;
+                graphNodes = node;
+                graphLinks = link;
+
+                // Update filter count after render
+                const visibleCount = node.filter(d => {
+                    if (_graphForcedVisible.has(d.id)) return true;
+                    if (!_graphFilterTypes[d.type]) return false;
+                    if (!_graphFilterText) return true;
+                    return (d.label || '').toLowerCase().includes(_graphFilterText.toLowerCase());
+                }).size();
+                const total = nodes.length;
+                const countEl = document.getElementById('graph-filter-count');
+                if (countEl) countEl.textContent = `显示 ${visibleCount} / ${total} 节点`;
+
+                // Node click — select and highlight connections
+                node.on('click', (event, d) => {
+                    event.stopPropagation();
+
+                    if (graphSelectedId === d.id) {
+                        // Deselect
+                        graphSelectedId = null;
+                        _graphForcedVisible = new Set();
+                        graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+                        graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+                        tooltip.style.display = 'none';
+                        hideGraphRelatedPanel();
+                        applyGraphFilter();
+                        return;
+                    }
+
+                    graphSelectedId = d.id;
+
+                    // Find ALL connected node IDs (true neighbors from full graph)
+                    const connectedIds = new Set([d.id]);
+                    links.forEach(l => {
+                        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                        if (sid === d.id) connectedIds.add(tid);
+                        if (tid === d.id) connectedIds.add(sid);
+                    });
+
+                    // Force show selected + all true neighbors regardless of filter
+                    _graphForcedVisible = connectedIds;
+                    applyGraphFilter();
+
+                    // Highlight nodes (selected/connected/dimmed)
+                    graphNodes
+                        .classed('graph-selected', nd => nd.id === d.id)
+                        .classed('graph-connected', nd => nd.id !== d.id && connectedIds.has(nd.id))
+                        .classed('graph-node-dim', nd => !connectedIds.has(nd.id));
+
+                    // Highlight links
+                    graphLinks
+                        .classed('graph-link-active', l => {
+                            const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                            const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                            return sid === d.id || tid === d.id;
+                        })
+                        .classed('graph-link-dim', l => {
+                            const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                            const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                            return sid !== d.id && tid !== d.id;
+                        });
+
+                    // Show tooltip for selected
+                    tooltip.style.display = 'block';
+
+                    // Show related docs panel
+                    showGraphRelatedPanel(d, connectedIds);
+                });
+
+                // Click on background rect to deselect
+                svg.on('click', (event) => {
+                    // Only deselect when clicking the transparent background rect, not nodes
+                    if (event.target.id !== 'graph-bg-click') return;
+                    if (graphSelectedId !== null) {
+                        graphSelectedId = null;
+                        _graphForcedVisible = new Set();
+                        graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+                        graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+                        tooltip.style.display = 'none';
+                        hideGraphRelatedPanel();
+                        applyGraphFilter();
+                    }
+                });
             });
         }
 
         function graphZoomIn() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 1.4); }
         function graphZoomOut() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 0.7); }
-        function graphReset() { if (graphSvg && graphZoom) graphSvg.transition().duration(400).call(graphZoom.transform, d3.zoomIdentity); }
+        function graphReset() {
+            graphSelectedId = null;
+            _graphForcedVisible = new Set();
+            if (graphNodes) graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+            if (graphLinks) graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+            if (graphSvg && graphZoom) graphSvg.transition().duration(400).call(graphZoom.transform, d3.zoomIdentity);
+            hideGraphRelatedPanel();
+            applyGraphFilter();
+        }
+
+        function clearGraphSelection() {
+            graphSelectedId = null;
+            _graphForcedVisible = new Set();
+            if (graphNodes) graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+            if (graphLinks) graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+            const tooltip = document.getElementById('graph-tooltip');
+            if (tooltip) tooltip.style.display = 'none';
+            hideGraphRelatedPanel();
+            applyGraphFilter();
+        }
+
+        function showGraphRelatedPanel(selectedNode, connectedIds) {
+            const panel = document.getElementById('graph-related-panel');
+            const list = document.getElementById('graph-related-list');
+            const count = document.getElementById('graph-related-count');
+            if (!panel || !list || !count) return;
+
+            const nodes = _graphNodesData || [];
+            // For entity: show connected chunks
+            // For chunk: show itself + related entities
+            // For source: show connected chunks
+            let relatedChunks = [];
+            if (selectedNode.type === 'entity') {
+                // Find all chunks connected to this entity
+                relatedChunks = nodes.filter(n => n.type === 'chunk' && connectedIds.has(n.id));
+            } else if (selectedNode.type === 'chunk') {
+                // Show this chunk and sibling chunks (same source type)
+                const sameSource = nodes.filter(n => n.type === 'chunk' && n.source_type === selectedNode.source_type && n.id !== selectedNode.id && connectedIds.has(n.id));
+                const self = nodes.find(n => n.id === selectedNode.id);
+                if (self) relatedChunks = [self, ...sameSource.slice(0, 5)];
+            } else if (selectedNode.type === 'source') {
+                // Show all chunks of this source type
+                const sourceType = selectedNode.id.replace('source:', '');
+                relatedChunks = nodes.filter(n => n.type === 'chunk' && n.source_type === sourceType).slice(0, 10);
+            }
+
+            // Deduplicate
+            const seen = new Set();
+            relatedChunks = relatedChunks.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+
+            count.textContent = `（${relatedChunks.length} 条）`;
+
+            if (relatedChunks.length === 0) {
+                list.innerHTML = '<div class="related-empty"><i class="ri-file-list-line"></i> 暂无关联文档</div>';
+                panel.style.display = 'block';
+                return;
+            }
+
+            const badgeColor = {manual:'#9c27b0', minimax:'#00bcd4', github:'#b39ddb', dir:'#f39c12', url:'#2ecc71', file:'#f39c12'};
+            const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
+
+            list.innerHTML = relatedChunks.map(c => {
+                const src = c.source_type || 'manual';
+                const color = badgeColor[src] || '#9c27b0';
+                const name = badgeName[src] || src;
+                const label = c.label || c.id;
+                const preview = c.preview || '';
+                return `<div class="related-item" onclick="openGraphChunkModal('${c.id}')">
+                    <div class="related-icon" style="color:${color};"><i class="ri-file-text-line"></i></div>
+                    <div class="related-info">
+                        <div class="related-name" title="${label}">${label}</div>
+                        <div class="related-preview">${preview}</div>
+                    </div>
+                    <div class="related-meta">
+                        <span style="color:${color};font-size:11px;">${name}</span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            panel.style.display = 'block';
+        }
+
+        function hideGraphRelatedPanel() {
+            const panel = document.getElementById('graph-related-panel');
+            if (panel) panel.style.display = 'none';
+        }
+
+        function openGraphChunkModal(chunkId) {
+            // Fetch full chunk content from API
+            fetch("/api/chunks").then(r => r.json()).then(d => {
+                const chunks = d.chunks || [];
+                const chunk = chunks.find(n => n.id === chunkId);
+                if (!chunk) return;
+
+                const src = chunk.source_type || chunk.source_type_from_id() || 'manual';
+                const badgeColor = {manual:'#9c27b0', minimax:'#00bcd4', github:'#b39ddb', dir:'#f39c12', url:'#2ecc71', file:'#f39c12'};
+                const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
+                const color = badgeColor[src] || '#9c27b0';
+                const bn = badgeName[src] || src;
+                const meta = chunk.metadata || {};
+                const label = meta.title || meta.relative_path || chunk.label || chunkId;
+                const body = chunk.text || chunk.preview || '';
+                const date = chunk.created_at || '';
+                const badgeHtml = `<span class="source-badge" style="background:rgba(${hexToRgb(color)},0.2);color:${color};">${bn}</span>`;
+                openModal(label, badgeHtml, body, chunk.source || '', date, body.length);
+            }).catch(() => {
+                // Fallback to graph node data
+                const nodes = _graphNodesData || [];
+                const n = nodes.find(x => x.id === chunkId && x.type === 'chunk');
+                if (!n) return;
+                const src = n.source_type || 'manual';
+                const badgeColor = {manual:'#9c27b0', minimax:'#00bcd4', github:'#b39ddb', dir:'#f39c12', url:'#2ecc71', file:'#f39c12'};
+                const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
+                const color = badgeColor[src] || '#9c27b0';
+                const bn = badgeName[src] || src;
+                const label = n.label || chunkId;
+                const body = n.preview || '';
+                const badgeHtml = `<span class="source-badge" style="background:rgba(${hexToRgb(color)},0.2);color:${color};">${bn}</span>`;
+                openModal(label, badgeHtml, body, n.source || '', null, body.length);
+            });
+        }
+
+        function hexToRgb(hex) {
+            const r = parseInt(hex.slice(1,3),16);
+            const g = parseInt(hex.slice(3,5),16);
+            const b = parseInt(hex.slice(5,7),16);
+            return `${r},${g},${b}`;
+        }
 
         // Chunks
         function loadChunks() {
             const list = document.getElementById('chunks-list');
+            if (!list) return;
             list.innerHTML = '<div class="loading"><i class="ri-loader-4-line"></i></div>';
             fetch("/api/chunks").then(r=>r.json()).then(d=>{
-                if (!d.chunks || !d.chunks.length) { list.innerHTML = '<div class="history-empty"><i class="ri-inbox-line"></i>暂无知识条目</div>'; return; }
-                list.innerHTML = d.chunks.map(c=>`<div class="chunk-item"><div class="source">${c.source}</div><div class="preview">${c.preview}</div><div class="meta">${c.created_at?new Date(c.created_at).toLocaleString():''}</div></div>`).join('');
+                allChunks = d.chunks || [];
+                const search = document.getElementById('chunk-search-input') ? document.getElementById('chunk-search-input').value : '';
+                const typeFilter = document.getElementById('chunk-type-filter') ? document.getElementById('chunk-type-filter').value : '';
+                renderChunks(allChunks, search, typeFilter);
             });
         }
 

@@ -412,34 +412,42 @@ def ingest_github():
                     print(f"Error fetching {path}: {e}", file=sys.stderr)
             fetch_contents()
 
-        # Download and process files
+        # Download and process files via GitHub Contents API (no raw.githubusercontent.com dependency)
         processed = 0
+        download_errors = []
         for item in file_urls[:50]:
             try:
-                if item['download_url']:
-                    with httpx.Client(timeout=30.0, headers=headers) as client:
-                        response = client.get(item['download_url'])
-                        if response.status_code == 200:
-                            try:
-                                content = response.text
-                            except UnicodeDecodeError:
-                                content = response.content.decode('utf-8', errors='replace')
-                            if len(content) > 100:
-                                metadata = {
-                                    "type": "github",
-                                    "repo": f"{owner}/{repo}",
-                                    "path": item['path'],
-                                    "url": item['url']
-                                }
-                                chunk_id, status = save_chunk(content, f"github:{owner}/{repo}", metadata)
-                                results.append({
-                                    "file": item['name'],
-                                    "path": item['path'],
-                                    "chunk_id": chunk_id,
-                                    "status": status
-                                })
-                                processed += 1
+                content = None
+                # Try Contents API (returns base64, works from any network)
+                contents_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{item['path']}"
+                with httpx.Client(timeout=30.0, headers=headers) as client:
+                    resp = client.get(contents_url)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if data.get('encoding') == 'base64' and data.get('content'):
+                            import base64
+                            content = base64.b64decode(data['content']).decode('utf-8', errors='replace')
+                        elif data.get('content'):
+                            content = data['content']
+                if content and len(content) > 100:
+                    metadata = {
+                        "type": "github",
+                        "repo": f"{owner}/{repo}",
+                        "path": item['path'],
+                        "url": item['url']
+                    }
+                    chunk_id, status = save_chunk(content, f"github:{owner}/{repo}", metadata)
+                    results.append({
+                        "file": item['name'],
+                        "path": item['path'],
+                        "chunk_id": chunk_id,
+                        "status": status
+                    })
+                    processed += 1
+                elif content:
+                    download_errors.append(item['path'])
             except Exception as e:
+                download_errors.append(f"{item['path']}: {e}")
                 print(f"Error processing {item['path']}: {e}", file=sys.stderr)
 
         return jsonify({
@@ -448,7 +456,7 @@ def ingest_github():
             "files_found": len(file_urls),
             "files_processed": processed,
             "files": results[:20],
-            "error": "GitHub API rate limit exceeded. Please set GITHUB_TOKEN environment variable or wait for rate limit reset (typically 1 hour)."
+            "errors": download_errors[:5] if download_errors else None
         })
 
     except Exception as e:
@@ -740,10 +748,23 @@ def knowledge_graph():
                 nodes.append(source_map[source_type])
 
             # --- Chunk node ---
-            # Label = first meaningful line of the chunk text
-            text_lines = [l.strip() for l in chunk['text'].split('\n') if l.strip()]
-            first_line = text_lines[0] if text_lines else chunk['text'][:40]
-            label = re.sub(r'^[#*`>\-_]+', '', first_line).strip()[:40]
+            # Label: priority — metadata.title > relative_path filename > first meaningful line
+            metadata = chunk.get('metadata', {}) or {}
+            label = ''
+            # Try metadata title
+            if metadata.get('title'):
+                label = metadata['title']
+            # Try relative path filename
+            elif metadata.get('relative_path'):
+                label = metadata['relative_path']
+            # Fall back to first meaningful text line
+            if not label:
+                text_lines = [l.strip() for l in chunk['text'].split('\n') if l.strip()]
+                first_line = text_lines[0] if text_lines else chunk['text'][:80]
+                label = re.sub(r'^[#*`>\-_]+', '', first_line).strip()[:40]
+            # Last resort: strip common prefixes and use raw text
+            if not label or re.match(r'^[\d\w\-]{1,6}$', label):
+                label = re.sub(r'^[#*`>\-_]+', '', chunk['text']).strip()[:40] or f"条目 {chunk['id'].split('-')[1][:6] if '-' in chunk['id'] else chunk['id']}"
 
             chunk_node = {
                 "id": chunk['id'],
@@ -902,11 +923,12 @@ def list_chunks():
         with open(chunks_file, 'r', encoding='utf-8') as f:
             chunks = json.load(f)
 
-        # Return simplified info
+        # Return full info including text for modal
         result = [{
             "id": c['id'],
             "source": c['source'],
-            "preview": c['text'][:100] + "..." if len(c['text']) > 100 else c['text'],
+            "text": c.get('text', ''),
+            "preview": c.get('text', '')[:200] + ("..." if len(c.get('text', '')) > 200 else ''),
             "created_at": c.get('created_at', ''),
             "metadata": c.get('metadata', {})
         } for c in chunks]
