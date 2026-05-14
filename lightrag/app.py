@@ -740,11 +740,18 @@ def knowledge_graph():
                 nodes.append(source_map[source_type])
 
             # --- Chunk node ---
+            # Label = first meaningful line of the chunk text
+            text_lines = [l.strip() for l in chunk['text'].split('\n') if l.strip()]
+            first_line = text_lines[0] if text_lines else chunk['text'][:40]
+            label = re.sub(r'^[#*`>\-_]+', '', first_line).strip()[:40]
+
             chunk_node = {
                 "id": chunk['id'],
-                "label": chunk['source'].split(':')[-1][:20],
+                "label": label,
                 "type": "chunk",
-                "source": source
+                "source": source,
+                "preview": chunk['text'][:500],
+                "source_type": source_type
             }
             nodes.append(chunk_node)
 
@@ -830,6 +837,11 @@ def knowledge_graph():
         filtered_nodes = [n for n in nodes if n['type'] != 'entity' or n['id'] in good_entities]
         filtered_links = [l for l in links
                           if l['type'] != 'mentions' or l['source'] in good_entities]
+
+        # Add link_count to entity nodes for tooltip
+        for n in filtered_nodes:
+            if n['type'] == 'entity':
+                n['link_count'] = entity_chunk_count.get(n['id'], 0)
 
         return jsonify({
             "nodes": filtered_nodes,
