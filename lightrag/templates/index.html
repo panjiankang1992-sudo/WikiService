@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WikiService 知识库</title>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -144,8 +145,16 @@
         .answer-box { background: var(--bg-dark); border-radius: 8px; padding: 16px; margin-top: 16px; line-height: 1.8; white-space: pre-wrap; font-size: 14px; }
 
         /* Graph */
-        .graph-container { height: 350px; background: var(--bg-dark); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-        #graph-svg { width: 100%; height: 100%; }
+        .graph-container { height: 480px; background: var(--bg-dark); border-radius: 8px; position: relative; overflow: hidden; }
+        #graph-canvas { width: 100%; height: 100%; }
+        .graph-controls { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 10; }
+        .graph-controls .btn { padding: 6px 10px; font-size: 12px; }
+        .graph-tooltip { position: absolute; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; max-width: 260px; pointer-events: none; z-index: 20; display: none; box-shadow: var(--shadow); }
+        .graph-tooltip .tip-type { font-size: 10px; color: var(--text-secondary); margin-bottom: 4px; }
+        .graph-tooltip .tip-label { font-weight: 600; color: var(--text-primary); margin-bottom: 4px; word-break: break-all; }
+        .graph-tooltip .tip-source { font-size: 11px; color: var(--text-secondary); word-break: break-all; }
+        .graph-legend { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary); }
+        .graph-legend span { display: flex; align-items: center; gap: 4px; }
 
         /* Chunks List */
         .chunks-list { max-height: 500px; overflow-y: auto; }
@@ -329,13 +338,25 @@
                         <i class="ri-refresh-line"></i> 刷新
                     </button>
                 </div>
-                <div class="card-body">
+                <div class="card-body" style="padding:0;">
                     <div class="graph-container">
-                        <svg id="graph-svg"><text x="50%" y="50%" text-anchor="middle" fill="#8b9298">点击刷新加载图谱</text></svg>
-                    </div>
-                    <div style="display:flex;gap:20px;margin-top:12px;font-size:12px;color:var(--text-secondary);">
-                        <span><i class="ri-circle-fill" style="color:#9c27b0;font-size:10px;"></i> 紫色 = 知识条目</span>
-                        <span><i class="ri-circle-fill" style="color:#5b8def;font-size:10px;"></i> 蓝色 = 实体概念</span>
+                        <svg id="graph-svg"></svg>
+                        <div class="graph-controls">
+                            <button class="btn btn-secondary" onclick="graphZoomIn()" title="放大"><i class="ri-zoom-in-line"></i></button>
+                            <button class="btn btn-secondary" onclick="graphZoomOut()" title="缩小"><i class="ri-zoom-out-line"></i></button>
+                            <button class="btn btn-secondary" onclick="graphReset()" title="重置"><i class="ri-focus-3-line"></i></button>
+                        </div>
+                        <div class="graph-tooltip" id="graph-tooltip">
+                            <div class="tip-type" id="tip-type"></div>
+                            <div class="tip-label" id="tip-label"></div>
+                            <div class="tip-source" id="tip-source"></div>
+                        </div>
+                        <div class="graph-legend">
+                            <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#9c27b0"/></svg> 知识条目</span>
+                            <span><svg width="12" height="12"><polygon points="6,0 12,6 6,12 0,6" fill="#5b8def"/></svg> 实体概念</span>
+                            <span><svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="3" fill="#2ecc71"/></svg> 来源分类</span>
+                            <span id="graph-stat" style="color:var(--text-secondary);"></span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -671,20 +692,174 @@
                 .finally(()=>{ btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-line"></i> 查询'; });
         }
 
-        // Graph
+        // Graph — D3 force simulation
+        let graphSimulation = null;
+        let graphSvg = null;
+        let graphZoom = null;
+
         function loadGraph() {
-            const svg = document.getElementById('graph-svg');
-            svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#8b9298">加载中...</text>';
-            fetch("/api/graph").then(r=>r.json()).then(d=>{
-                if (!d.nodes || d.nodes.length === 0) { svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#8b9298">暂无数据</text>'; return; }
-                const w = svg.clientWidth || 600, h = svg.clientHeight || 350;
-                const pos = d.nodes.map((n,i)=>({...n, x:w/2+Math.min(w,h)*0.35*Math.cos(2*Math.PI*i/d.nodes.length), y:h/2+Math.min(w,h)*0.35*Math.sin(2*Math.PI*i/d.nodes.length)}));
-                let html = '';
-                d.links.slice(0,80).forEach(l=>{ const s=pos.find(n=>n.id===l.source),t=pos.find(n=>n.id===l.target); if(s&&t) html+=`<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="#333" stroke-width="1"/>`; });
-                pos.forEach(n=>{ const c=n.type==='chunk'?'#9c27b0':'#5b8def'; html+=`<circle cx="${n.x}" cy="${n.y}" r="${n.type==='chunk'?6:4}" fill="${c}"/>`; });
-                svg.innerHTML = html;
+            const container = document.querySelector('.graph-container');
+            const svgEl = document.getElementById('graph-svg');
+            if (!svgEl) return;
+
+            const W = container.clientWidth;
+            const H = container.clientHeight;
+
+            svgEl.innerHTML = '';
+            svgEl.setAttribute('width', W);
+            svgEl.setAttribute('height', H);
+
+            fetch("/api/graph").then(r => r.json()).then(data => {
+                if (!data.nodes || data.nodes.length === 0) {
+                    svgEl.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="#8b9298" font-size="14">暂无数据，请先添加知识</text>';
+                    return;
+                }
+
+                // Stats
+                const stats = data.stats || {};
+                document.getElementById('graph-stat').textContent =
+                    `节点:${data.nodes.length} 连接:${data.links.length}`;
+
+                // Deep copy for D3 mutation
+                const nodes = data.nodes.map(n => ({...n}));
+                const links = data.links.map(l => ({...l}));
+
+                // Color map
+                const typeColor = { chunk: '#9c27b0', entity: '#5b8def', source: '#2ecc71' };
+
+                // Setup SVG with zoom
+                const svg = d3.select(svgEl);
+                svg.selectAll('*').remove();
+
+                // Defs for arrow markers and glow
+                const defs = svg.append('defs');
+                defs.append('marker')
+                    .attr('id', 'arrowhead')
+                    .attr('viewBox', '-0 -5 10 10')
+                    .attr('refX', 14)
+                    .attr('refY', 0)
+                    .attr('orient', 'auto')
+                    .attr('markerWidth', 6)
+                    .attr('markerHeight', 6)
+                    .append('path')
+                    .attr('d', 'M 0,-5 L 10,0 L 0,5')
+                    .attr('fill', '#444');
+
+                const g = svg.append('g');
+
+                // Zoom behavior
+                graphZoom = d3.zoom()
+                    .scaleExtent([0.2, 4])
+                    .on('zoom', (event) => g.attr('transform', event.transform));
+                svg.call(graphZoom);
+
+                // Links
+                const link = g.append('g')
+                    .selectAll('line')
+                    .data(links)
+                    .join('line')
+                    .attr('stroke', '#334')
+                    .attr('stroke-width', 1)
+                    .attr('stroke-opacity', 0.6);
+
+                // Node groups
+                const node = g.append('g')
+                    .selectAll('g')
+                    .data(nodes)
+                    .join('g')
+                    .attr('cursor', 'pointer')
+                    .call(d3.drag()
+                        .on('start', (event, d) => {
+                            if (!event.active) graphSimulation.alphaTarget(0.3).restart();
+                            d.fx = d.x; d.fy = d.y;
+                        })
+                        .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+                        .on('end', (event, d) => {
+                            if (!event.active) graphSimulation.alphaTarget(0);
+                            d.fx = null; d.fy = null;
+                        })
+                    );
+
+                // Node shapes: chunks=circle, sources=rect, entities=diamond
+                node.filter(d => d.type === 'chunk')
+                    .append('circle')
+                    .attr('r', 8)
+                    .attr('fill', '#9c27b0')
+                    .attr('stroke', '#ce93d8')
+                    .attr('stroke-width', 2)
+                    .attr('fill-opacity', 0.9);
+
+                node.filter(d => d.type === 'source')
+                    .append('rect')
+                    .attr('x', -18).attr('y', -12)
+                    .attr('width', 36).attr('height', 24)
+                    .attr('rx', 6)
+                    .attr('fill', '#2ecc71')
+                    .attr('stroke', '#a9dfbf')
+                    .attr('stroke-width', 2)
+                    .attr('fill-opacity', 0.9);
+
+                node.filter(d => d.type === 'entity')
+                    .append('polygon')
+                    .attr('points', '0,-7 7,0 0,7 -7,0')
+                    .attr('fill', '#5b8def')
+                    .attr('stroke', '#90caf9')
+                    .attr('stroke-width', 1.5)
+                    .attr('fill-opacity', 0.9);
+
+                // Labels for all node types
+                node.append('text')
+                    .attr('dy', d => d.type === 'source' ? 4 : d.type === 'chunk' ? -14 : -12)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', 10)
+                    .attr('fill', '#aaa')
+                    .attr('pointer-events', 'none')
+                    .text(d => d.label ? d.label.substring(0, 15) : d.id.substring(0, 12));
+
+                // Tooltip
+                const tooltip = document.getElementById('graph-tooltip');
+                const tipType = document.getElementById('tip-type');
+                const tipLabel = document.getElementById('tip-label');
+                const tipSource = document.getElementById('tip-source');
+
+                node.on('mouseover', (event, d) => {
+                    tooltip.style.display = 'block';
+                    tipType.textContent = d.type === 'chunk' ? '📄 知识条目' : d.type === 'source' ? '📁 来源' : '🔷 实体概念';
+                    tipLabel.textContent = d.label || d.id;
+                    tipSource.textContent = d.source || '';
+                }).on('mousemove', (event, d) => {
+                    const rect = container.getBoundingClientRect();
+                    tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+                    tooltip.style.top = (event.clientY - rect.top - 10) + 'px';
+                }).on('mouseout', () => {
+                    tooltip.style.display = 'none';
+                });
+
+                // Force simulation — balanced layout
+                graphSimulation = d3.forceSimulation(nodes)
+                    .force('link', d3.forceLink(links).id(d => d.id).distance(d => d.type === 'source' ? 120 : 60).strength(0.6))
+                    .force('charge', d3.forceManyBody().strength(d => d.type === 'entity' ? -80 : -200))
+                    .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05))
+                    .force('collision', d3.forceCollide().radius(d => d.type === 'chunk' ? 24 : d.type === 'source' ? 30 : 14))
+                    .force('x', d3.forceX(W / 2).strength(0.02))
+                    .force('y', d3.forceY(H / 2).strength(0.02))
+                    .alphaDecay(0.02)
+                    .on('tick', () => {
+                        link
+                            .attr('x1', d => d.source.x)
+                            .attr('y1', d => d.source.y)
+                            .attr('x2', d => d.target.x)
+                            .attr('y2', d => d.target.y);
+                        node.attr('transform', d => `translate(${d.x},${d.y})`);
+                    });
+
+                graphSvg = svg;
             });
         }
+
+        function graphZoomIn() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 1.4); }
+        function graphZoomOut() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 0.7); }
+        function graphReset() { if (graphSvg && graphZoom) graphSvg.transition().duration(400).call(graphZoom.transform, d3.zoomIdentity); }
 
         // Chunks
         function loadChunks() {

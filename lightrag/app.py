@@ -696,7 +696,7 @@ Answer:"""
 
 @app.route('/api/graph')
 def knowledge_graph():
-    """Get knowledge relationship graph"""
+    """Get knowledge relationship graph with rich entity extraction"""
     try:
         chunks_file = os.path.join(STORAGE_PATH, "text_chunks.json")
         if not os.path.exists(chunks_file):
@@ -707,56 +707,144 @@ def knowledge_graph():
 
         nodes = []
         links = []
-        entities = {}
+        entity_map = {}
+        source_map = {}
 
-        # Extract entities from chunks
+        # Known tech/entity patterns
+        TECH_TERMS = {
+            'docker', 'kubernetes', 'python', 'javascript', 'typescript',
+            'java', 'golang', 'rust', 'react', 'vue', 'angular', 'flask',
+            'fastapi', 'django', 'nodejs', 'postgresql', 'mongodb', 'redis',
+            'neo4j', 'pgvector', 'nginx', 'linux', 'git', 'github', 'api',
+            'rest', 'graphql', 'http', 'websocket', 'grpc', 'jwt', 'oauth',
+            'minimax', 'deepseek', 'openai', 'claude', 'anthropic', 'jina',
+            'siliconflow', 'weknora', 'lightrag', 'flask', 'crawl4ai',
+            'microservice', 'dockerfile', 'docker compose', 'elasticsearch',
+            'prometheus', 'grafana', 'nginx', 'terraform', 'ansible',
+            'helm', 'istio', 'linkerd', 'kafka', 'rabbitmq',
+        }
+        TECH_RE = r'\b(?:' + '|'.join(re.escape(t) for t in TECH_TERMS) + r')\b'
+
         for chunk in chunks:
             text = chunk['text']
+            source = chunk['source']
 
-            # Extract potential entities (capitalized words, quoted terms, special patterns)
-            capitalized = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', text)
-            quoted = re.findall(r'["""](.+?)["""]', text)
-            tech_terms = re.findall(r'\b(?:API|Docker|Kubernetes|Python|JavaScript|TypeScript|API|REST|GraphQL)\b', text, re.I)
+            # --- Source type node ---
+            source_type = source.split(':')[0]
+            if source_type not in source_map:
+                source_map[source_type] = {
+                    "id": f"source:{source_type}",
+                    "label": {"manual":"手动输入","url":"网页","github":"GitHub","dir":"目录","file":"文件","minimax":"MiniMax文档"}.get(source_type, source_type),
+                    "type": "source"
+                }
+                nodes.append(source_map[source_type])
 
-            all_entities = set(capitalized + quoted + tech_terms)
-
+            # --- Chunk node ---
             chunk_node = {
                 "id": chunk['id'],
-                "label": chunk['source'].split(':')[-1][:30],
+                "label": chunk['source'].split(':')[-1][:20],
                 "type": "chunk",
-                "source": chunk['source']
+                "source": source
             }
             nodes.append(chunk_node)
 
-            for entity in all_entities:
-                if len(entity) < 2:
-                    continue
-                entity_id = f"entity:{entity[:20]}"
-                if entity_id not in entities:
-                    entities[entity_id] = {
-                        "id": entity_id,
+            # Link chunk to its source type
+            links.append({
+                "source": f"source:{source_type}",
+                "target": chunk['id'],
+                "type": "belongs_to"
+            })
+
+            # --- Extract entities ---
+            entities_in_chunk = set()
+
+            # 1. Tech terms (known list, min 3 chars)
+            for m in re.finditer(TECH_RE, text, re.I):
+                val = m.group().lower()
+                if len(val) >= 3:
+                    entities_in_chunk.add(val)
+
+            # 2. Chinese tech/philosophy phrases (Chinese chars + copula)
+            for m in re.finditer(r'([一-鿿]{2,6})\s+(?:是|为|有|指|提供|支持|通过)', text):
+                entities_in_chunk.add(m.group(1))
+
+            # 3. Chinese proper nouns with known suffixes
+            for m in re.finditer(r'([一-鿿]{2,10})(?:平台|工具|系统|服务|框架|协议|模型|语言|库|引擎)', text):
+                entities_in_chunk.add(m.group(1))
+
+            # 4. Model/product names (specific patterns: version numbers, known products)
+            for m in re.finditer(r'\b([A-Z][a-z]+(?:[A-Z][a-z]+)*\d*(?:\.\d+)+)\b', text):
+                entities_in_chunk.add(m.group(1))
+            for m in re.finditer(r'\b([A-Z][a-z]+(?:[-][A-Z][a-z]+)+)\b', text):
+                entities_in_chunk.add(m.group(1))
+
+            # 5. Book/doc titles in 《》
+            for m in re.finditer(r'《([^》]{2,20})》', text):
+                entities_in_chunk.add(m.group(1))
+
+            # 6. Chinese tech concept phrases (exact match)
+            CHINESE_TECH = {
+                '人工智能','机器学习','深度学习','神经网络','大模型','向量数据库',
+                '知识图谱','智能问答','语义搜索','知识库','自然语言','文本生成',
+                '语音合成','图像生成','视频生成','代码生成','智能助手','智能体',
+                '混合检索','智能分块','语义理解','知识管理','文档解析'
+            }
+            for phrase in CHINESE_TECH:
+                if phrase in text:
+                    entities_in_chunk.add(phrase)
+
+            # Add entities to graph
+            for entity in entities_in_chunk:
+                eid = f"entity:{entity[:25]}"
+                if eid not in entity_map:
+                    entity_map[eid] = {
+                        "id": eid,
                         "label": entity,
                         "type": "entity"
                     }
-                    nodes.append(entities[entity_id])
-
+                    nodes.append(entity_map[eid])
                 links.append({
-                    "source": entity_id,
+                    "source": eid,
                     "target": chunk['id'],
-                    "type": "contains"
+                    "type": "mentions"
                 })
 
+        # Limit: cap entity→chunk links for visual clarity
+        entity_chunk_count = {}
+        for link in links:
+            if link['type'] == 'mentions':
+                eid = link['source']
+                entity_chunk_count[eid] = entity_chunk_count.get(eid, 0) + 1
+
+        entity_nodes = sorted(entity_chunk_count.items(), key=lambda x: x[1], reverse=True)
+        # Keep entities that appear in 2-5 chunks (avoid noise, avoid hub nodes)
+        good_entities = {eid for eid, cnt in entity_chunk_count.items() if 2 <= cnt <= 5}
+        # Also keep top 8 by connectivity
+        for eid, _ in entity_nodes[:8]:
+            good_entities.add(eid)
+        # Cap at 60 total entity nodes for performance
+        if len(good_entities) > 60:
+            good_entities = set(eid for eid, _ in entity_nodes[:60])
+
+        # Filter nodes/links
+        filtered_nodes = [n for n in nodes if n['type'] != 'entity' or n['id'] in good_entities]
+        filtered_links = [l for l in links
+                          if l['type'] != 'mentions' or l['source'] in good_entities]
+
         return jsonify({
-            "nodes": nodes,
-            "links": links,
+            "nodes": filtered_nodes,
+            "links": filtered_links,
             "stats": {
                 "total_chunks": len(chunks),
-                "total_entities": len(entities),
-                "total_links": len(links)
+                "total_entities": len(good_entities),
+                "total_sources": len(source_map),
+                "total_links": len(filtered_links)
             }
         })
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
