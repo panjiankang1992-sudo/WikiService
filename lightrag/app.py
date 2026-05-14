@@ -457,31 +457,49 @@ def query():
         question_lower = question.lower()
         best_chunks = []
 
-        # Extract keywords
-        cn_chars = re.findall(r'[一-鿿]{2,}', question)
+        # Extract English keywords
         en_words = re.findall(r'[a-zA-Z]{2,}', question_lower)
-        keywords = set(cn_chars + en_words)
+
+        # Extract Chinese keywords via character bigrams (more reliable than greedy regex)
+        def extract_cn_bigrams(text):
+            result = []
+            i = 0
+            while i < len(text) - 1:
+                c1, c2 = text[i], text[i + 1]
+                if '一' <= c1 <= '鿿' and '一' <= c2 <= '鿿':
+                    result.append(c1 + c2)
+                    i += 1
+                else:
+                    i += 1
+            return result
+
+        question_bigrams = extract_cn_bigrams(question)
 
         for chunk in chunks:
             text_lower = chunk['text'].lower()
-            text_cn = re.findall(r'[一-鿿]{2,}', chunk['text'])
             text_en = re.findall(r'[a-zA-Z]{2,}', text_lower)
+            chunk_bigrams = extract_cn_bigrams(chunk['text'])
 
             score = 0
-            for kw in keywords:
-                if kw in text_lower or kw in chunk['text']:
+            # English match
+            for kw in en_words:
+                if kw in text_lower:
                     score += 2
-                if len(kw) >= 2:
-                    for tc in text_cn:
-                        if kw in tc or tc in kw:
-                            score += 1
-                if kw in text_en:
-                    score += 1
+
+            # Chinese bigram match
+            matched_bigrams = set(question_bigrams) & set(chunk_bigrams)
+            score += len(matched_bigrams) * 3
+
+            # Also check long Chinese phrases as substrings (2-char+)
+            cn_phrases = re.findall(r'[一-鿿]{2,}', question)
+            for phrase in cn_phrases:
+                if phrase in chunk['text']:
+                    score += 5
 
             if score > 0:
                 best_chunks.append((score, chunk))
 
-        best_chunks.sort(reverse=True)
+        best_chunks.sort(key=lambda x: x[0], reverse=True)
 
         if not best_chunks and chunks:
             relevant_texts = [c['text'] for c in chunks[:3]]
