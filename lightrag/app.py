@@ -117,7 +117,7 @@ def ingest():
 
 @app.route('/api/ingest/url', methods=['POST'])
 def ingest_url():
-    """Crawl content from URL"""
+    """Crawl content from URL — supports raw .md, MiniMax docs, and standard HTML"""
     data = request.json
     url = data.get('url', '')
 
@@ -130,42 +130,102 @@ def ingest_url():
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            # Handle encoding issues
+        content = None
+        title_text = url
+        raw_source = "html"
+
+        # --- Strategy 1: Raw .md files (MiniMax docs and similar) ---
+        if url.endswith('.md'):
+            with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                try:
+                    content = response.text
+                except UnicodeDecodeError:
+                    content = response.content.decode('utf-8', errors='replace')
+            raw_source = "md"
+
+        # --- Strategy 2: MiniMax platform docs (convert .md path automatically) ---
+        elif 'platform.minimaxi.com/docs/' in url or 'platform.minimaxi.com/' in url:
+            # Try .md path first for MiniMax docs
+            md_url = url
+            if not md_url.endswith('.md'):
+                # Convert page URL to raw MDX: /docs/guides/xxx → /docs/guides/xxx.md
+                md_url = url.rstrip('/') + '.md'
+
             try:
-                html = response.text
-            except UnicodeDecodeError:
-                html = response.content.decode('utf-8', errors='replace')
+                with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+                    md_response = client.get(md_url)
+                    if md_response.status_code == 200:
+                        content = md_response.text
+                        raw_source = "md"
+                        url = md_url  # update to md path
+            except httpx.HTTPError:
+                pass
 
-        # Extract text from HTML
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(html, 'html.parser')
+            # Fallback: try llms.txt (documentation index) for MiniMax
+            if not content:
+                try:
+                    with httpx.Client(timeout=30.0, headers=headers) as client:
+                        idx_resp = client.get('https://platform.minimaxi.com/docs/llms.txt')
+                        if idx_resp.status_code == 200:
+                            content = idx_resp.text
+                            title_text = 'MiniMax 开放平台文档中心 - 文档索引'
+                            raw_source = "md-index"
+                            url = 'https://platform.minimaxi.com/docs/llms.txt'
+                except httpx.HTTPError:
+                    pass
 
-        # Remove scripts and styles
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
-            tag.decompose()
+        # --- Strategy 3: Standard HTML page ---
+        if content is None:
+            with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                try:
+                    html = response.text
+                except UnicodeDecodeError:
+                    html = response.content.decode('utf-8', errors='replace')
 
-        # Get title
-        title = soup.find('title')
-        title_text = title.get_text().strip() if title else url
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
 
-        # Get main content
-        main_content = soup.find('main') or soup.find('article') or soup.find('body')
-        content = main_content.get_text(separator="\n", strip=True) if main_content else ""
+            # Remove scripts and styles
+            for tag in soup(["script", "style", "nav", "footer", "header"]):
+                tag.decompose()
 
-        # Clean up whitespace
-        content = re.sub(r'\n{3,}', '\n\n', content)
+            # Get title
+            title_tag = soup.find('title')
+            title_text = title_tag.get_text().strip() if title_tag else url
+
+            # Get main content
+            main_content = soup.find('main') or soup.find('article') or soup.find('body')
+            content = main_content.get_text(separator="\n", strip=True) if main_content else ""
+
+            # Clean up whitespace
+            content = re.sub(r'\n{3,}', '\n\n', content)
+            content = content.strip()
+
+        if not content or len(content.strip()) < 50:
+            return jsonify({
+                "error": "页面内容过少，可能是 JS 渲染页面（如 Next.js SPA）。建议使用 .md 路径或 GitHub 地址。"
+            }), 400
+
+        # Strip MDX frontmatter/comments if present
+        content = re.sub(r'^> .*\n', '', content, flags=re.MULTILINE)  # Remove blockquotes like "Documentation Index"
+        content = re.sub(r'<AgentInstructions>.*?</AgentInstructions>', '', content, flags=re.DOTALL)
+        content = re.sub(r'```json[\s\S]*?```', '', content)  # Remove code blocks
         content = content.strip()
 
-        if not content:
-            return jsonify({"error": "No content extracted from URL"}), 400
+        # Extract title from markdown heading if available
+        title_match = re.search(r'^# (.+)$', content, re.MULTILINE)
+        if title_match:
+            title_text = title_match.group(1).strip()
 
         # Save to knowledge base
         metadata = {
             "url": url,
             "title": title_text,
+            "raw_source": raw_source,
             "crawled_at": datetime.now().isoformat(),
             "type": "web"
         }
@@ -177,11 +237,84 @@ def ingest_url():
             "title": title_text,
             "url": url,
             "content_length": len(content),
+            "raw_source": raw_source,
             "status": status
         })
 
     except ImportError:
         return jsonify({"error": "BeautifulSoup4 not installed. Run: pip install beautifulsoup4 lxml"}), 500
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ingest/minimax', methods=['POST'])
+def ingest_minimax():
+    """Batch ingest all MiniMax platform documentation"""
+    data = request.json or {}
+    max_pages = data.get('max_pages', 20)
+
+    try:
+        import httpx
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+        # 1. Get full documentation index
+        with httpx.Client(timeout=30.0, headers=headers) as client:
+            resp = client.get('https://platform.minimaxi.com/docs/llms.txt')
+            resp.raise_for_status()
+            index_content = resp.text
+
+        # 2. Parse all doc links from index
+        doc_links = re.findall(r'\((https://platform\.minimaxi\.com(/docs/[^\)]+\.md))\)', index_content)
+        results = []
+
+        for doc_url, doc_path in doc_links[:max_pages]:
+            try:
+                with httpx.Client(timeout=30.0, headers=headers) as client:
+                    r = client.get(doc_url)
+                    if r.status_code != 200:
+                        continue
+                    content = r.text
+                    # Extract title from first heading
+                    title = re.search(r'^# (.+)$', content, re.MULTILINE)
+                    title_text = title.group(1).strip() if title else doc_path
+
+                    # Clean MDX artifacts
+                    content = re.sub(r'^> .*\n', '', content, flags=re.MULTILINE)
+                    content = re.sub(r'<AgentInstructions>.*?</AgentInstructions>', '', content, flags=re.DOTALL)
+                    content = re.sub(r'```json[\s\S]*?```', '', content)
+                    content = content.strip()
+
+                    if len(content) < 100:
+                        continue
+
+                    metadata = {
+                        "url": doc_url,
+                        "title": title_text,
+                        "source": "minimax",
+                        "type": "doc",
+                        "crawled_at": datetime.now().isoformat()
+                    }
+                    chunk_id, status = save_chunk(content, f"minimax:{doc_path}", metadata)
+                    results.append({
+                        "url": doc_url,
+                        "title": title_text,
+                        "chunk_id": chunk_id,
+                        "status": status,
+                        "chars": len(content)
+                    })
+            except Exception as e:
+                print(f"Error fetching {doc_url}: {e}", file=sys.stderr)
+                continue
+
+        return jsonify({
+            "success": True,
+            "total_indexed": len(doc_links),
+            "pages_ingested": len(results),
+            "pages": results
+        })
+
     except Exception as e:
         import traceback
         traceback.print_exc()
