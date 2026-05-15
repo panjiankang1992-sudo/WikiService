@@ -740,7 +740,7 @@ def get_doc_info(chunk: dict) -> dict:
     m = re.search(r'^#{1,6}\s+(.+)$', text, re.MULTILINE)
     doc_title = m.group(1).strip()[:80] if m else ''
 
-    badge_map = {'manual': '手动输入', 'dir': '目录', 'url': '网页',
+    badge_map = {'manual': '手动输入', 'dir': '文件', 'url': '网页',
                  'github': 'GitHub', 'minimax': 'MiniMax', 'file': '文件'}
     icon_map = {'manual': 'ri-edit-line', 'dir': 'ri-folder-line', 'url': 'ri-global-line',
                 'github': 'ri-github-line', 'minimax': 'ri-robot-line', 'file': 'ri-file-text-line'}
