@@ -58,6 +58,26 @@ os.makedirs(STORAGE_PATH, exist_ok=True)
 os.makedirs(os.path.join(STORAGE_PATH, "sources"), exist_ok=True)
 
 
+def _save_embedding(chunk_id: str, text: str):
+    """后台计算并保存单个 chunk 的 embedding"""
+    emb_file = os.path.join(STORAGE_PATH, "embeddings.json")
+    cached = {}
+    if os.path.exists(emb_file):
+        try:
+            with open(emb_file, 'r', encoding='utf-8') as f:
+                cached = json.load(f)
+        except Exception:
+            cached = {}
+    try:
+        emb = get_embedding(text)
+        h = hashlib.md5(text.encode('utf-8', errors='replace')).hexdigest()[:12]
+        cached[chunk_id] = {"vec": emb, "_hash": h}
+        with open(emb_file, 'w', encoding='utf-8') as f:
+            json.dump(cached, f, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"embedding 保存失败 {chunk_id}: {e}")
+
+
 def save_chunk(text, source, metadata=None):
     """Save a text chunk to storage"""
     chunks_file = os.path.join(STORAGE_PATH, "text_chunks.json")
@@ -94,6 +114,12 @@ def save_chunk(text, source, metadata=None):
 
     with open(chunks_file, 'w', encoding='utf-8') as f:
         json.dump(chunks, f, ensure_ascii=False, indent=2)
+
+    # 异步计算 embedding（在后台线程，不阻塞响应）
+    import threading
+    t = threading.Thread(target=_save_embedding, args=(chunk_id, text))
+    t.daemon = True
+    t.start()
 
     return chunk_id, "added"
 
@@ -598,18 +624,20 @@ def ingest_file():
 # 语义搜索模块：Embedding + 文档聚合 + LLM 评分
 # ============================================================
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "deepseek-embeddings")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "http://localhost:11434")
+EMBEDDING_DIM = 768  # nomic-embed-text 输出 768 维
 
 
 def get_embedding(text: str) -> list:
-    """调用 DeepSeek Embedding API 获取文本向量"""
+    """调用本地 Ollama（或其他兼容 API）获取文本向量"""
     import httpx
-    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+    # Ollama API 格式
     payload = {"model": EMBEDDING_MODEL, "input": text[:8000]}
-    with httpx.Client(timeout=60.0) as client:
-        resp = client.post(f"{DEEPSEEK_BASE_URL}/embeddings", headers=headers, json=payload)
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(f"{EMBEDDING_BASE_URL}/api/embeddings", json=payload)
         resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+        return resp.json()["embedding"]
 
 
 def cosine_similarity(a: list, b: list) -> float:
@@ -793,16 +821,16 @@ def keyword_search(query: str, chunks: list, top_k: int = 20) -> list:
     return scored[:top_k]
 
 
-def llm_score_documents(query: str, docs: list) -> list:
-    """调用 LLM 对文档进行相关度评分和分类"""
+def llm_score_and_summarize(query: str, docs: list) -> tuple:
+    """调用 LLM 同时完成文档评分和 AI 总结（一次调用，减少延迟）"""
     if not docs:
-        return []
+        return [], "知识库为空，未找到相关文档。"
 
     import httpx
 
     doc_entries = []
     for i, doc in enumerate(docs):
-        preview = doc['text'][:600].replace('\n', ' ').strip()
+        preview = doc['text'][:500].replace('\n', ' ').strip()
         doc_entries.append(
             f"文档{i+1}: {doc['title']}\n"
             f"  来源: {doc['source']}\n"
@@ -811,56 +839,67 @@ def llm_score_documents(query: str, docs: list) -> list:
 
     docs_text = "\n\n".join(doc_entries)
 
-    scoring_prompt = f"""你是一个知识库助手。用户正在搜索：**{query}**
+    # 合并评分 + 总结为一个 JSON 响应
+    combined_prompt = f"""你是一个知识库助手。用户正在搜索：**{query}**
 
-以下是知识库中与搜索相关的文档，请判断每篇与用户搜索意图的相关程度，并给出简要理由。
+以下是知识库中与搜索相关的文档，请完成两项任务：
+
+1. 判断每篇与用户搜索意图的相关程度
+2. 基于高度相关的文档给出简要总结
 
 {docs_text}
 
 请严格按以下 JSON 格式返回（只返回 JSON，不要有任何其他文字）：
-[
-  {{"index": 1, "relevance": "high", "reason": "为什么高度相关"}},
-  {{"index": 2, "relevance": "medium", "reason": "为什么可能相关"}}
-]"""
+{{
+  "scores": [
+    {{"index": 1, "relevance": "high", "reason": "为什么高度相关"}},
+    {{"index": 2, "relevance": "medium", "reason": "为什么可能相关"}}
+  ],
+  "summary": "基于高度相关文档的 1-2 句话总结"
+}}"""
 
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
     messages = [
-        {"role": "system", "content": "你是一个严格的知识库评分助手。只返回 JSON 数组，不要有任何其他文字。"},
-        {"role": "user", "content": scoring_prompt}
+        {"role": "system", "content": "你是一个严格的知识库评分助手。只返回 JSON，不要有任何其他文字。"},
+        {"role": "user", "content": combined_prompt}
     ]
     payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.3}
 
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=90.0) as client:
             resp = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
 
         import json as json_lib
-        m = re.search(r'\[\s*\{[\s\S]*\}\s*\]', content)
+        # 提取 JSON 对象
+        m = re.search(r'\{[\s\S]*\}', content)
         if m:
-            scores = json_lib.loads(m.group())
+            result = json_lib.loads(m.group())
+            scores = result.get("scores", [])
+            summary = result.get("summary", "")
             score_map = {s['index']: s for s in scores}
             for doc in docs:
                 info = score_map.get(doc['_idx'], {})
                 doc['relevance'] = info.get('relevance', 'low')
                 doc['reason'] = info.get('reason', '未能判断')
+            return docs, summary or "未生成总结"
         else:
             for doc in docs:
                 doc['relevance'] = 'low'
                 doc['reason'] = 'LLM 未能评分'
+            return docs, "LLM 响应格式异常"
     except Exception as e:
-        logger.warning(f"LLM 评分失败: {e}")
+        logger.warning(f"LLM 评分+总结失败: {e}")
         for doc in docs:
             doc['relevance'] = 'medium'
             doc['reason'] = '评分服务暂时不可用'
-
-    return docs
+        return docs, "评分服务暂时不可用，请稍后重试。"
 
 
 @app.route('/api/query', methods=['POST'])
 def query():
-    """语义搜索 + LLM 评分：返回分类后的推荐文档"""
+    """语义搜索 + LLM 评分+总结：返回分类后的推荐文档"""
     data = request.json
     question = data.get('question', '')
     mode = data.get('mode', 'hybrid')
@@ -887,10 +926,10 @@ def query():
                 "documents": {"high": [], "medium": [], "low": []}
             })
 
-        # 1. 计算 embedding（如尚未缓存）
+        # 1. 从缓存加载 embedding（无 API 调用）
         embeddings = compute_all_embeddings(chunks)
 
-        # 2. 语义搜索
+        # 2. 语义搜索（1 次 API：query embedding）
         semantic_results = semantic_search(question, chunks, embeddings, top_k=30)
 
         # 3. 无语义结果时降级为关键词搜索
@@ -911,9 +950,11 @@ def query():
 
         doc_list = list(doc_map.values())
 
-        # 5. LLM 评分
+        # 5. LLM 评分 + AI 总结（合并为 1 次 API 调用）
         if doc_list:
-            doc_list = llm_score_documents(question, doc_list)
+            doc_list, summary = llm_score_and_summarize(question, doc_list)
+        else:
+            summary = "未找到与搜索意图相关的文档，请尝试其他关键词。"
 
         # 6. 按 high / medium / low 分类
         categorized = {"high": [], "medium": [], "low": []}
@@ -925,34 +966,6 @@ def query():
                 categorized["medium"].append(doc)
             else:
                 categorized["low"].append(doc)
-
-        # 7. AI 总结
-        top_docs = categorized["high"][:3] if categorized["high"] else (categorized["medium"][:2] if categorized["medium"] else [])
-        context_texts = [d['text'][:800] for d in top_docs]
-
-        if context_texts:
-            import httpx
-            summary_prompt = f"""用户搜索：**{question}**
-
-基于知识库中匹配的文档，请给出简要总结，说明找到的相关内容是什么。
-
-匹配文档摘要：
-{chr(10).join(f"- {t}" for t in context_texts)}
-
-请用 1-2 句话总结，直接说明知识库中有什么相关资料。"""
-
-            headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
-            messages = [
-                {"role": "system", "content": "你是知识库助手，简明扼要回答。"},
-                {"role": "user", "content": summary_prompt}
-            ]
-            payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.5}
-            with httpx.Client(timeout=60.0) as client:
-                resp = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
-                resp.raise_for_status()
-                summary = resp.json()["choices"][0]["message"]["content"]
-        else:
-            summary = "未找到与搜索意图相关的文档，请尝试其他关键词。"
 
         total_docs = len(categorized["high"]) + len(categorized["medium"]) + len(categorized["low"])
 
