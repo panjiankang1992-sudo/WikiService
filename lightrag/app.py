@@ -748,30 +748,40 @@ def knowledge_graph():
                 nodes.append(source_map[source_type])
 
             # --- Chunk node ---
-            # Label: priority — metadata.title > relative_path filename > first meaningful line
+            # Label: priority — metadata.title > metadata.path filename > GitHub path > first meaningful line
             metadata = chunk.get('metadata', {}) or {}
             label = ''
-            # Try metadata title
             if metadata.get('title'):
                 label = metadata['title']
-            # Try relative path filename
             elif metadata.get('relative_path'):
                 label = metadata['relative_path']
-            # Fall back to first meaningful text line
+            elif metadata.get('path') and source_type == 'github':
+                # GitHub: extract filename from file path
+                label = metadata['path'].split('/')[-1]
+            # Fall back to first meaningful text line (skip chunk ID comments)
             if not label:
                 text_lines = [l.strip() for l in chunk['text'].split('\n') if l.strip()]
-                first_line = text_lines[0] if text_lines else chunk['text'][:80]
-                label = re.sub(r'^[#*`>\-_]+', '', first_line).strip()[:40]
-            # Last resort: strip common prefixes and use raw text
+                # Skip lines that look like chunk ID headers: "# chunk-0-abc123" or "chunk-0-abc123"
+                meaningful = [l for l in text_lines if not re.match(r'^#?\s*chunk-\d+-[\w]+', l, re.I)]
+                first_line = meaningful[0] if meaningful else (text_lines[0] if text_lines else chunk['text'][:80])
+                label = re.sub(r'^[#*`>\-_]+\s*', '', first_line).strip()[:60]
+            # Last resort
             if not label or re.match(r'^[\d\w\-]{1,6}$', label):
-                label = re.sub(r'^[#*`>\-_]+', '', chunk['text']).strip()[:40] or f"条目 {chunk['id'].split('-')[1][:6] if '-' in chunk['id'] else chunk['id']}"
+                label = re.sub(r'^[#*`>\-_]+\s*', '', chunk['text']).strip()[:40]
+            if not label:
+                label = f"条目 {chunk['id'].split('-')[1][:6] if '-' in chunk['id'] else chunk['id']}"
 
+            text_len = len(chunk['text'])
+            # Truncate preview only for very large chunks (>2MB)
+            preview_text = chunk['text'] if text_len <= 2 * 1024 * 1024 else chunk['text'][:102400]
             chunk_node = {
                 "id": chunk['id'],
                 "label": label,
                 "type": "chunk",
                 "source": source,
-                "preview": chunk['text'][:500],
+                "preview": preview_text,
+                "text_size": text_len,
+                "large": text_len > 2 * 1024 * 1024,
                 "source_type": source_type
             }
             nodes.append(chunk_node)
@@ -928,12 +938,53 @@ def list_chunks():
             "id": c['id'],
             "source": c['source'],
             "text": c.get('text', ''),
-            "preview": c.get('text', '')[:200] + ("..." if len(c.get('text', '')) > 200 else ''),
+            "text_size": len(c.get('text', '')),
+            "large": len(c.get('text', '')) > 2 * 1024 * 1024,
             "created_at": c.get('created_at', ''),
             "metadata": c.get('metadata', {})
         } for c in chunks]
 
         return jsonify({"chunks": result, "total": len(result)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/chunks/<chunk_id>/download')
+def download_chunk(chunk_id):
+    """Download full chunk text as a file"""
+    try:
+        chunks_file = os.path.join(STORAGE_PATH, "text_chunks.json")
+        if not os.path.exists(chunks_file):
+            return jsonify({"error": "Not found"}), 404
+
+        with open(chunks_file, 'r', encoding='utf-8') as f:
+            chunks = json.load(f)
+
+        chunk = next((c for c in chunks if c['id'] == chunk_id), None)
+        if not chunk:
+            return jsonify({"error": "Chunk not found"}), 404
+
+        text = chunk.get('text', '')
+        metadata = chunk.get('metadata', {}) or {}
+        # Build a filename from metadata
+        if metadata.get('relative_path'):
+            filename = metadata['relative_path'].replace('/', '_')
+        elif metadata.get('title'):
+            filename = metadata['title'][:80] + '.txt'
+        elif metadata.get('path'):
+            filename = metadata['path'].replace('/', '_')
+        else:
+            filename = f"chunk_{chunk_id[:8]}.txt"
+
+        from flask import Response
+        return Response(
+            text,
+            mimetype='text/plain; charset=utf-8',
+            headers={
+                'Content-Disposition': f'attachment; filename*=UTF-8\'\'{filename}',
+                'Content-Length': str(len(text))
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

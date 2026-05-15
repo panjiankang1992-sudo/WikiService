@@ -6,6 +6,7 @@
     <title>WikiService 知识库</title>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -290,11 +291,34 @@
         .modal-body-text { font-size: 14px; color: var(--text-primary); line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
         .modal-body-text::-webkit-scrollbar { width: 5px; }
         .modal-body-text::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-        .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); flex-shrink: 0; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .modal-source { font-size: 12px; color: var(--text-secondary); word-break: break-all; display: flex; align-items: flex-start; gap: 6px; }
         .modal-source i { margin-top: 2px; flex-shrink: 0; }
+        .modal-download-btn { font-size: 12px; color: var(--primary); text-decoration: none; padding: 4px 10px; border: 1px solid var(--primary); border-radius: 6px; display: flex; align-items: center; gap: 4px; flex-shrink: 0; transition: background 0.2s; white-space: nowrap; }
+        .modal-download-btn:hover { background: var(--primary); color: #fff; }
         .modal-close { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 20px; padding: 4px; border-radius: 4px; line-height: 1; transition: color 0.2s; flex-shrink: 0; }
         .modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+        .wiki-link { color: var(--primary); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; }
+        .wiki-link:hover { color: #fff; background: var(--primary); border-radius: 3px; padding: 0 2px; text-decoration: none; }
+        /* Markdown rendering in modal */
+        .modal-body-text h1, .modal-body-text h2, .modal-body-text h3, .modal-body-text h4 { color: var(--text-primary); margin: 1em 0 0.4em; }
+        .modal-body-text h1 { font-size: 18px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .modal-body-text h2 { font-size: 16px; }
+        .modal-body-text h3 { font-size: 14px; }
+        .modal-body-text p { margin: 0.6em 0; }
+        .modal-body-text code { background: var(--bg-dark); border-radius: 4px; padding: 2px 6px; font-size: 13px; color: #ce93d8; }
+        .modal-body-text pre { background: var(--bg-dark); border-radius: 8px; padding: 12px 16px; margin: 0.8em 0; overflow-x: auto; }
+        .modal-body-text pre code { background: none; padding: 0; color: var(--text-secondary); }
+        .modal-body-text ul, .modal-body-text ol { padding-left: 20px; margin: 0.6em 0; }
+        .modal-body-text li { margin: 0.3em 0; }
+        .modal-body-text blockquote { border-left: 3px solid var(--primary); margin: 0.8em 0; padding: 6px 12px; background: var(--bg-dark); border-radius: 0 6px 6px 0; }
+        .modal-body-text a { color: var(--primary); text-decoration: none; }
+        .modal-body-text a:hover { text-decoration: underline; }
+        .modal-body-text table { border-collapse: collapse; width: 100%; margin: 0.8em 0; font-size: 13px; }
+        .modal-body-text th, .modal-body-text td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+        .modal-body-text th { background: var(--bg-dark); }
+        .doc-notice { background: rgba(91,141,239,0.1); border: 1px solid rgba(91,141,239,0.3); border-radius: 8px; padding: 12px 16px; color: var(--primary); font-size: 13px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .doc-notice i { font-size: 18px; }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -594,6 +618,7 @@
             </div>
             <div class="modal-footer">
                 <div class="modal-source" id="modal-source"></div>
+                <div id="modal-download-wrap"></div>
             </div>
         </div>
     </div>
@@ -754,13 +779,106 @@
             document.body.style.overflow = '';
         }
 
-        function openModal(title, badgeHtml, body, source, date, length) {
+        // Wiki-style [[Title]] links
+        let _titleChunkMap = null;
+
+        function escapeHtml(text) {
+            return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderWikiLinks(text) {
+            if (!text) return '';
+            const escaped = escapeHtml(text);
+            return escaped.replace(/\[\[([^\]]+)\]\]/g, (_, title) => {
+                return `<span class="wiki-link" data-title="${escapeHtml(title)}" title="跳转到: ${escapeHtml(title)}">[[${escapeHtml(title)}]]</span>`;
+            });
+        }
+
+        function openChunkByTitle(title) {
+            // Build title → filtered-chunks index map on demand
+            const filtered = window._filteredChunks;
+            if (!filtered) { alert(`未找到词条「${title}」`); return; }
+            const idx = filtered.findIndex(c => {
+                const ti = getTitleInfo(c);
+                return ti.main === title;
+            });
+            if (idx >= 0) {
+                openChunkModal(idx);
+            } else {
+                alert(`未找到词条「${title}」，请先导入相关知识。`);
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('wiki-link')) {
+                const title = e.target.dataset.title;
+                if (title) openChunkByTitle(title);
+            }
+        });
+
+        // Detect file type from extension in path
+        function detectFileType(source, metadata) {
+            const path = metadata?.relative_path || metadata?.path || source || '';
+            const ext = path.split('.').pop().toLowerCase().split('?')[0];
+            if (['md', 'markdown'].includes(ext)) return 'md';
+            if (ext === 'html' || ext === 'htm') return 'html';
+            if (ext === 'txt' || ext === 'log') return 'txt';
+            if (['doc', 'docx'].includes(ext)) return 'doc';
+            if (ext === 'pdf') return 'pdf';
+            return 'md'; // default to markdown
+        }
+
+        // Render body based on file type
+        function renderBody(body, fileType) {
+            if (!body) return '<p style="color:#8b9298">无内容</p>';
+            const wiki = renderWikiLinks(escapeHtml(body));
+            if (fileType === 'html') {
+                // Sanitize: only allow safe tags
+                return sanitizeHtml(body);
+            }
+            if (fileType === 'txt') {
+                return `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit">${wiki}</pre>`;
+            }
+            if (fileType === 'doc' || fileType === 'docx') {
+                return `<div class="doc-notice"><i class="ri-file-word-2-line"></i> Word 文档（.doc/.docx）不支持在浏览器中预览，已提供下载按钮查看原文。</div><pre style="white-space:pre-wrap;word-break:break-word;opacity:0.6;font-family:inherit">${wiki}</pre>`;
+            }
+            if (fileType === 'pdf') {
+                return `<div class="doc-notice"><i class="ri-file-pdf-2-line"></i> PDF 文件已提供下载按钮查看原文。</div><pre style="white-space:pre-wrap;word-break:break-word;opacity:0.6;font-family:inherit">${wiki}</pre>`;
+            }
+            // Markdown (default): parse with marked.js
+            if (typeof marked !== 'undefined') {
+                try {
+                    return marked.parse(body, {breaks: true, gfm: true});
+                } catch(e) {
+                    return wiki;
+                }
+            }
+            return wiki;
+        }
+
+        // Basic HTML sanitizer (allow only safe tags)
+        function sanitizeHtml(html) {
+            return html
+                .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+                .replace(/on\w+="[^"]*"/gi, '')
+                .replace(/javascript:/gi, '');
+        }
+
+        function openModal(title, badgeHtml, body, source, date, length, chunkId, isLarge, fileType) {
             document.getElementById('modal-title').textContent = title;
             document.getElementById('modal-badge-wrap').innerHTML = badgeHtml;
             document.getElementById('modal-date-wrap').innerHTML = date ? `<i class="ri-time-line"></i>${date}` : '';
             document.getElementById('modal-length-wrap').innerHTML = length ? `<i class="ri-file-text-line"></i>${length} 字符` : '';
-            document.getElementById('modal-body-text').textContent = body;
+            document.getElementById('modal-body-text').innerHTML = renderBody(body, fileType);
             document.getElementById('modal-source').innerHTML = source ? `<i class="ri-link"></i>${source}` : '';
+            // Download button only for large chunks (>2MB)
+            const dlWrap = document.getElementById('modal-download-wrap');
+            if (chunkId && isLarge) {
+                dlWrap.innerHTML = `<a href="/api/chunks/${chunkId}/download" class="modal-download-btn" download><i class="ri-download-2-line"></i>下载原文</a>`;
+            } else {
+                dlWrap.innerHTML = '';
+            }
             document.getElementById('modal-overlay').classList.add('show');
             document.body.style.overflow = 'hidden';
         }
@@ -911,7 +1029,18 @@
                 const domain = src.replace('url:', '').replace(/^https?:\/\//, '').split('/')[0];
                 return { main: metaTitle || domain, sub: metaTitle ? domain : '', isDir: false };
             }
-            // minimax/github/file: show relative path or name
+            // github: show repo/name from source, or path filename
+            if (src.startsWith('github:')) {
+                const parts = src.split(':');
+                // parts[1] = owner/repo, parts[2+] = path
+                const repo = parts[1] || '';
+                const repoName = repo.includes('/') ? repo.split('/')[1] : repo;
+                const filePath = parts.slice(2).join('/');
+                const fileName = filePath ? filePath.split('/').pop() : '';
+                // Prefer meta.title or fileName, fall back to repo
+                return { main: meta.title || fileName || repoName || 'GitHub', sub: filePath ? repo + '/' + filePath : repo, isDir: false };
+            }
+            // minimax/file: show relative path or name
             const parts = src.split(':');
             const name = parts.length > 1 ? parts[1] : src;
             const metaTitle = meta.title;
@@ -1033,7 +1162,8 @@
             const ti = getTitleInfo(c);
             const text = c.text || '';
             const date = c.created_at ? new Date(c.created_at).toLocaleString('zh-CN') : '';
-            openModal(ti.main, srcBadgeHtml(src), text, src, date, text.length);
+            const fileType = detectFileType(src, c.metadata);
+            openModal(ti.main, srcBadgeHtml(src), text, src, date, text.length, c.id, !!c.large, fileType);
         }
 
         // Submit handlers
@@ -1234,6 +1364,8 @@
         let _graphFilterTypes = { chunk: true, entity: true, source: true };
         let _graphForcedVisible = new Set(); // nodes forced visible (selected + true neighbors)
         let _wheelZoomEnabled = false; // wheel zoom toggle state
+        let _graphInitialFitDone = false; // one-time initial fit after first render
+        let _graphNodeClickActive = false; // true when user is clicking a node (blocks D3 zoom click)
 
         function toggleWheelZoom(el) {
             const svgEl = document.getElementById('graph-svg');
@@ -1260,6 +1392,7 @@
             if (!container) return;
             const W = container.clientWidth;
             const H = container.clientHeight;
+            if (W <= 0 || H <= 0) return;
 
             // Gather nodes with settled positions that match current filter
             const visible = _graphNodesData.filter(d => {
@@ -1287,11 +1420,12 @@
 
             const scaleX = (W - padding * 2) / graphW;
             const scaleY = (H - padding * 2) / graphH;
-            const scale = Math.min(scaleX, scaleY, 2.5);
+            // Clamp scale to a safe range: [0.25, 2.5]
+            const scale = Math.max(0.25, Math.min(Math.min(scaleX, scaleY), 2.5));
             const tx = (W - graphW * scale) / 2 - minX * scale;
             const ty = (H - graphH * scale) / 2 - minY * scale;
 
-            if (graphZoom) {
+            if (graphZoom && isFinite(scale) && isFinite(tx) && isFinite(ty)) {
                 d3.select(svgEl).transition().duration(500).call(
                     graphZoom.transform,
                     d3.zoomIdentity.translate(tx, ty).scale(scale)
@@ -1299,7 +1433,7 @@
             }
         }
 
-        function applyGraphFilter() {
+        function applyGraphFilter(skipFit) {
             if (!graphNodes || !graphLinks || !_graphNodesData) return;
             _graphFilterText = document.getElementById('graph-filter-input') ? document.getElementById('graph-filter-input').value : '';
             // Re-compute forced visible (selected + true neighbors)
@@ -1344,8 +1478,7 @@
             const countEl = document.getElementById('graph-filter-count');
             if (countEl) countEl.textContent = `显示 ${visibleCount} / ${total} 节点`;
 
-            // Auto-zoom to visible nodes
-            fitGraphToVisibleNodes();
+            // No auto-fit: user controls zoom freely; node click handler does explicit zoom-to-node
         }
 
         function toggleGraphType(el) {
@@ -1362,26 +1495,55 @@
         }
 
         function loadGraph() {
+            const container = document.querySelector('.graph-container');
+            let svgEl = document.getElementById('graph-svg');
+
+            // Only skip rebuilding if SVG has real rendered nodes AND global data exists
+            // (prevents early exit on page refresh where <g> exists in static HTML but JS globals are reset)
+            const hasRenderedNodes = svgEl && svgEl.querySelector('g circle, g rect:not(#graph-bg-click), g polygon');
+            if (hasRenderedNodes && _graphNodesData && _graphLinksData) {
+                _graphFilterText = '';
+                _graphForcedVisible = new Set();
+                graphSelectedId = null;
+                const filterInput = document.getElementById('graph-filter-input');
+                if (filterInput) filterInput.value = '';
+                ['chunk','entity','source'].forEach(t => {
+                    const el = document.querySelector(`[data-type="${t}"]`);
+                    if (el && !el.classList.contains('active')) el.classList.add('active');
+                });
+                graphNodes && graphNodes.attr('display', null);
+                graphLinks && graphLinks.attr('display', null);
+                return;
+            }
+
             // Reset filter state
             _graphFilterText = '';
             _graphForcedVisible = new Set();
             graphSelectedId = null;
+            _graphInitialFitDone = false;
             const filterInput = document.getElementById('graph-filter-input');
             if (filterInput) filterInput.value = '';
             ['chunk','entity','source'].forEach(t => {
                 const el = document.querySelector(`[data-type="${t}"]`);
                 if (el && !el.classList.contains('active')) el.classList.add('active');
             });
-            const container = document.querySelector('.graph-container');
-            const svgEl = document.getElementById('graph-svg');
-            if (!svgEl) return;
 
-            const W = container.clientWidth;
-            const H = container.clientHeight;
+            const W = container.clientWidth || 800;
+            const H = container.clientHeight || 480;
 
-            svgEl.innerHTML = '';
-            svgEl.setAttribute('width', W);
-            svgEl.setAttribute('height', H);
+            // Create SVG if it doesn't exist yet
+            if (!svgEl) {
+                svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svgEl.setAttribute('id', 'graph-svg');
+                svgEl.setAttribute('width', W);
+                svgEl.setAttribute('height', H);
+                svgEl.style.display = 'block';
+                container.appendChild(svgEl);
+            } else {
+                svgEl.innerHTML = '';
+                svgEl.setAttribute('width', W);
+                svgEl.setAttribute('height', H);
+            }
 
             fetch("/api/graph").then(r => r.json()).then(data => {
                 if (!data.nodes || data.nodes.length === 0) {
@@ -1450,9 +1612,14 @@
                 // Zoom behavior — wheel zoom disabled by default (only drag + buttons)
                 graphZoom = d3.zoom()
                     .scaleExtent([0.2, 4])
-                    .on('zoom', (event) => g.attr('transform', event.transform));
+                    .on('zoom', (event) => g.attr('transform', event.transform))
+                    .filter((event) => {
+                        // Allow wheel always; for click events, block if user just clicked a node
+                        if (event.type === 'wheel') return true;
+                        if (event.type === 'click' && _graphNodeClickActive) return false;
+                        return true;
+                    });
                 svg.call(graphZoom);
-                // Remove D3's wheel listener (namespaced: wheel.zoom)
                 svg.on('wheel.zoom', null);
 
                 // Links
@@ -1533,6 +1700,13 @@
                 const tipSource = document.getElementById('tip-source');
                 const tipMeta = document.getElementById('tip-meta');
 
+                // Block D3 zoom click when user clicks a node
+                node.on('mousedown', () => { _graphNodeClickActive = true; });
+                node.on('click', () => {
+                    // Clear AFTER D3 zoom filter has checked it (via rAF)
+                    requestAnimationFrame(() => { _graphNodeClickActive = false; });
+                });
+
                 node.on('mouseover', (event, d) => {
                     tooltip.style.display = 'block';
 
@@ -1607,8 +1781,11 @@
                         node.attr('transform', d => `translate(${d.x},${d.y})`);
                     })
                     .on('end', () => {
-                        // Auto-fit all nodes to viewport after simulation settles
-                        fitGraphToVisibleNodes();
+                        // One-time initial fit — centers the whole graph on first load only
+                        if (!_graphInitialFitDone) {
+                            _graphInitialFitDone = true;
+                            fitGraphToVisibleNodes();
+                        }
                     });
 
                 graphNodes = node;
@@ -1637,7 +1814,8 @@
                         graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
                         tooltip.style.display = 'none';
                         hideGraphRelatedPanel();
-                        applyGraphFilter();
+                        graphNodes.attr('display', d => !_graphFilterTypes[d.type] ? 'none' : null);
+                        graphLinks.attr('display', null);
                         return;
                     }
 
@@ -1654,7 +1832,20 @@
 
                     // Force show selected + all true neighbors regardless of filter
                     _graphForcedVisible = connectedIds;
-                    applyGraphFilter();
+                    // Update display: show connected, hide filtered-out nodes
+                    graphNodes.attr('display', d => {
+                        if (connectedIds.has(d.id)) return null;
+                        if (!_graphFilterTypes[d.type]) return 'none';
+                        if (_graphFilterText && !(d.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())) return 'none';
+                        return null;
+                    });
+                    graphLinks.attr('display', l => {
+                        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                        const sOk = connectedIds.has(sid) || (_graphFilterTypes[_graphNodesData.find(x => x.id === sid)?.type] && (!_graphFilterText || (_graphNodesData.find(x => x.id === sid)?.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())));
+                        const tOk = connectedIds.has(tid) || (_graphFilterTypes[_graphNodesData.find(x => x.id === tid)?.type] && (!_graphFilterText || (_graphNodesData.find(x => x.id === tid)?.label || '').toLowerCase().includes(_graphFilterText.toLowerCase())));
+                        return sOk && tOk ? null : 'none';
+                    });
 
                     // Highlight nodes (selected/connected/dimmed)
                     graphNodes
@@ -1675,6 +1866,19 @@
                             return sid !== d.id && tid !== d.id;
                         });
 
+                    // Zoom to center on the selected node
+                    if (d.x != null && d.y != null && graphZoom) {
+                        const container = document.querySelector('.graph-container');
+                        const W = container ? container.clientWidth : 800;
+                        const H = container ? container.clientHeight : 600;
+                        const scale = 1.5;
+                        const tx = W / 2 - d.x * scale;
+                        const ty = H / 2 - d.y * scale;
+                        d3.select(svgEl).transition().duration(400).call(
+                            graphZoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale)
+                        );
+                    }
+
                     // Show tooltip for selected
                     tooltip.style.display = 'block';
 
@@ -1682,19 +1886,11 @@
                     showGraphRelatedPanel(d, connectedIds);
                 });
 
-                // Click on background rect to deselect
+                // Background click: do NOT deselect — selection persists until user explicitly clears
+                // (D3 zoom click is blocked when node is clicked via _graphNodeClickActive filter)
                 svg.on('click', (event) => {
-                    // Only deselect when clicking the transparent background rect, not nodes
                     if (event.target.id !== 'graph-bg-click') return;
-                    if (graphSelectedId !== null) {
-                        graphSelectedId = null;
-                        _graphForcedVisible = new Set();
-                        graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
-                        graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
-                        tooltip.style.display = 'none';
-                        hideGraphRelatedPanel();
-                        applyGraphFilter();
-                    }
+                    // Background click does nothing while a node is selected
                 });
             });
         }
@@ -1702,24 +1898,36 @@
         function graphZoomIn() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 1.4); }
         function graphZoomOut() { if (graphSvg && graphZoom) graphSvg.transition().duration(300).call(graphZoom.scaleBy, 0.7); }
         function graphReset() {
+            _graphNodeClickActive = false;
             graphSelectedId = null;
             _graphForcedVisible = new Set();
-            if (graphNodes) graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
-            if (graphLinks) graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+            if (graphNodes) {
+                graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+                graphNodes.attr('display', d => !_graphFilterTypes[d.type] ? 'none' : null);
+            }
+            if (graphLinks) {
+                graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+                graphLinks.attr('display', null);
+            }
             if (graphSvg && graphZoom) graphSvg.transition().duration(400).call(graphZoom.transform, d3.zoomIdentity);
             hideGraphRelatedPanel();
-            applyGraphFilter();
         }
 
         function clearGraphSelection() {
+            _graphNodeClickActive = false;
             graphSelectedId = null;
             _graphForcedVisible = new Set();
-            if (graphNodes) graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
-            if (graphLinks) graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+            if (graphNodes) {
+                graphNodes.classed('graph-selected', false).classed('graph-connected', false).classed('graph-node-dim', false);
+                graphNodes.attr('display', d => !_graphFilterTypes[d.type] ? 'none' : null);
+            }
+            if (graphLinks) {
+                graphLinks.classed('graph-link-active', false).classed('graph-link-dim', false);
+                graphLinks.attr('display', null);
+            }
             const tooltip = document.getElementById('graph-tooltip');
             if (tooltip) tooltip.style.display = 'none';
             hideGraphRelatedPanel();
-            applyGraphFilter();
         }
 
         function showGraphRelatedPanel(selectedNode, connectedIds) {
@@ -1795,7 +2003,7 @@
                 const chunk = chunks.find(n => n.id === chunkId);
                 if (!chunk) return;
 
-                const src = chunk.source_type || chunk.source_type_from_id() || 'manual';
+                const src = chunk.source ? chunk.source.split(':')[0] : 'manual';
                 const badgeColor = {manual:'#9c27b0', minimax:'#00bcd4', github:'#b39ddb', dir:'#f39c12', url:'#2ecc71', file:'#f39c12'};
                 const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
                 const color = badgeColor[src] || '#9c27b0';
@@ -1805,7 +2013,7 @@
                 const body = chunk.text || chunk.preview || '';
                 const date = chunk.created_at || '';
                 const badgeHtml = `<span class="source-badge" style="background:rgba(${hexToRgb(color)},0.2);color:${color};">${bn}</span>`;
-                openModal(label, badgeHtml, body, chunk.source || '', date, body.length);
+                openModal(label, badgeHtml, body, chunk.source || '', date, body.length, chunkId, !!chunk.large, detectFileType(chunk.source || '', chunk.metadata || {}));
             }).catch(() => {
                 // Fallback to graph node data
                 const nodes = _graphNodesData || [];
@@ -1816,10 +2024,22 @@
                 const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
                 const color = badgeColor[src] || '#9c27b0';
                 const bn = badgeName[src] || src;
-                const label = n.label || chunkId;
+                // Build title from source metadata
+                let label = n.label || chunkId;
+                const meta = n.metadata || {};
+                if (src === 'github') {
+                    const parts = (n.source || '').split(':');
+                    const repo = parts[1] || '';
+                    const repoName = repo.includes('/') ? repo.split('/')[1] : repo;
+                    const filePath = parts.slice(2).join('/');
+                    const fileName = filePath ? filePath.split('/').pop() : '';
+                    label = meta.title || fileName || repoName || 'GitHub';
+                } else if (meta.title) {
+                    label = meta.title;
+                }
                 const body = n.preview || '';
                 const badgeHtml = `<span class="source-badge" style="background:rgba(${hexToRgb(color)},0.2);color:${color};">${bn}</span>`;
-                openModal(label, badgeHtml, body, n.source || '', null, body.length);
+                openModal(label, badgeHtml, body, n.source || '', null, body.length, null, false, detectFileType(n.source || '', n.metadata || {}));
             });
         }
 
