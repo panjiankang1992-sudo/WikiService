@@ -214,6 +214,28 @@
         .related-meta { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
         .related-empty { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px; }
 
+        /* === 统一文档条目样式 (doc-item) === */
+        /* 用于: 知识管理 + 智能问答参考来源 + 图谱关联面板 */
+        .doc-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--bg-dark); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .doc-item:hover { border-color: var(--primary); background: rgba(91,141,239,0.06); }
+        .doc-icon { font-size: 20px; flex-shrink: 0; color: var(--text-secondary); }
+        .doc-icon.dir { color: #f39c12; }
+        .doc-icon.url { color: #2ecc71; }
+        .doc-icon.github { color: #b39ddb; }
+        .doc-icon.minimax { color: #00bcd4; }
+        .doc-icon.manual { color: #ce93d8; }
+        .doc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .doc-name { font-size: 13px; color: var(--text-primary); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-path { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.7; }
+        .doc-meta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .doc-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+        .doc-badge.manual { background: rgba(156,39,176,0.2); color: #ce93d8; }
+        .doc-badge.url { background: rgba(46,204,113,0.2); color: #2ecc71; }
+        .doc-badge.github { background: rgba(139,92,246,0.2); color: #b39ddb; }
+        .doc-badge.dir, .doc-badge.file { background: rgba(243,156,18,0.2); color: #f39c12; }
+        .doc-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
+        .doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+
         /* Chunks List */
         .chunks-list { max-height: 600px; overflow-y: auto; }
         .chunk-item { background: var(--bg-dark); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); overflow: hidden; transition: border-color 0.2s; }
@@ -230,7 +252,6 @@
         .chunk-badge.github { background: rgba(139,92,246,0.2); color: #b39ddb; }
         .chunk-badge.dir, .chunk-badge.file { background: rgba(243,156,18,0.2); color: #f39c12; }
         .chunk-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
-        .chunk-title { font-size: 13px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .chunk-date { font-size: 11px; color: var(--text-secondary); flex-shrink: 0; }
         .chunk-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .chunk-actions .btn { padding: 4px 8px; font-size: 11px; }
@@ -1006,41 +1027,79 @@
             });
         }
 
+        function extractDocTitle(text) {
+            if (!text) return '';
+            // Extract first ATX heading: # Heading or ## Heading
+            const m = text.match(/^#{1,6}\s+(.+)$/m);
+            if (m) return m[1].trim().substring(0, 80);
+            return '';
+        }
+
         function getTitleInfo(c) {
             const src = c.source || '';
             const meta = c.metadata || {};
+            const text = c.text || '';
             const bareManual = src === 'manual' || src === 'manual:';
             if (bareManual) {
-                return { main: '手动输入', sub: '', isDir: false };
+                const docTitle = extractDocTitle(text);
+                return { main: docTitle || '手动输入', sub: '', isDir: false };
             }
-            // dir: show filename + directory
+            // dir: main = 文件:relative_path，sub = 目录
             if (src.startsWith('dir:')) {
                 const fileName = meta.relative_path || meta.path || '';
                 const dirPath = meta.directory || src.split(':')[1] || '';
-                return { main: fileName, sub: dirPath, isDir: true };
+                return { main: '文件:' + fileName, sub: dirPath, isDir: true };
             }
-            // url: show meta title or domain
+            // url: show doc title, then meta title, then domain
             if (src.startsWith('url:')) {
                 const metaTitle = meta.title;
                 const domain = src.replace('url:', '').replace(/^https?:\/\//, '').split('/')[0];
-                return { main: metaTitle || domain, sub: metaTitle ? domain : '', isDir: false };
+                const docTitle = extractDocTitle(text);
+                return { main: docTitle || metaTitle || domain, sub: (docTitle || metaTitle) ? domain : '', isDir: false };
             }
-            // github: show repo/name from source, or path filename
+            // github: show doc title, then meta title, then file name
             if (src.startsWith('github:')) {
                 const parts = src.split(':');
-                // parts[1] = owner/repo, parts[2+] = path
                 const repo = parts[1] || '';
                 const repoName = repo.includes('/') ? repo.split('/')[1] : repo;
                 const filePath = parts.slice(2).join('/');
                 const fileName = filePath ? filePath.split('/').pop() : '';
-                // Prefer meta.title or fileName, fall back to repo
-                return { main: meta.title || fileName || repoName || 'GitHub', sub: filePath ? repo + '/' + filePath : repo, isDir: false };
+                const docTitle = extractDocTitle(text);
+                return { main: docTitle || meta.title || fileName || repoName || 'GitHub', sub: (docTitle || meta.title) ? (filePath || repo) : '', isDir: false };
             }
-            // minimax/file: show relative path or name
+            // minimax/file: show doc title, then name
             const parts = src.split(':');
             const name = parts.length > 1 ? parts[1] : src;
-            const metaTitle = meta.title;
-            return { main: metaTitle || name || '未命名', sub: '', isDir: false };
+            const docTitle = extractDocTitle(text);
+            return { main: docTitle || meta.title || name || '未命名', sub: '', isDir: false };
+        }
+
+        // 统一文档条目渲染函数：用于知识管理、智能问答参考来源、图谱关联面板
+        // c: chunk 对象 (来自 API)
+        // opts.onclick: 点击回调函数字符串（可选，默认 openChunkModal）
+        // opts.actions: 额外操作按钮 HTML（可选）
+        function renderDocItem(c, opts) {
+            opts = opts || {};
+            const src = c.source || '';
+            const ti = getTitleInfo(c);
+            const badgeClass = srcBadge(src);
+            const badgeName = srcBadgeName(src);
+
+            const iconMap = {dir:'ri-folder-line', url:'ri-global-line', github:'ri-github-line', manual:'ri-edit-line', minimax:'ri-robot-line', file:'ri-file-text-line'};
+            const iconClass = iconMap[badgeClass] || 'ri-file-text-line';
+            const onclick = opts.onclick || `openChunkModal(${opts.idx})`;
+
+            return `<div class="doc-item" onclick="${onclick}">
+                <i class="doc-icon ${badgeClass} ${iconClass}"></i>
+                <div class="doc-info">
+                    <div class="doc-name" title="${escapeHtml(ti.main)}">${ti.main}</div>
+                    ${ti.sub ? `<div class="doc-path" title="${escapeHtml(ti.sub)}">${ti.sub}</div>` : ''}
+                </div>
+                <div class="doc-meta">
+                    <span class="doc-badge ${badgeClass}">${badgeName}</span>
+                </div>
+                ${opts.actions || ''}
+            </div>`;
         }
 
         function renderChunks(chunks, search, typeFilter) {
@@ -1091,28 +1150,15 @@
 
             list.innerHTML = `<div class="chunk-count">共 ${filtered.length} 条（第 ${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} 条）</div>` +
                 pageItems.map((c, i) => {
-                    const src = c.source || '';
-                    const b = badge(src);
-                    const bn = badgeName(src);
-                    const ti = getTitleInfo(c);
-                    const date = c.created_at ? new Date(c.created_at).toLocaleString('zh-CN') : '';
                     const globalIdx = start + i;
-                    return `<div class="chunk-item" id="chunk-${globalIdx}">
-                        <div class="chunk-header" onclick="openChunkModal(${globalIdx})" style="cursor:pointer;">
-                            <i class="chunk-chevron ri-arrow-right-s-line"></i>
-                            <span class="chunk-badge ${b}">${bn}</span>
-                            <span class="chunk-title-area">
-                                <span class="chunk-title" title="${ti.main}">${ti.main}</span>
-                                ${ti.sub ? `<span class="chunk-sub" title="${ti.sub}">${ti.sub}</span>` : ''}
-                            </span>
-                            <span class="chunk-date">${date}</span>
-                            <div class="chunk-actions" onclick="event.stopPropagation()">
-                                <button class="btn btn-secondary" onclick="deleteChunk('${c.id}',${globalIdx})" title="删除" style="color:var(--danger);padding:3px 8px;">
-                                    <i class="ri-delete-bin-line"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>`;
+                    return renderDocItem(c, {
+                        idx: globalIdx,
+                        actions: `<div class="doc-actions">
+                            <button class="btn btn-secondary" onclick="event.stopPropagation();deleteChunk('${c.id}',${globalIdx})" title="删除" style="color:var(--danger);padding:3px 8px;">
+                                <i class="ri-delete-bin-line"></i>
+                            </button>
+                        </div>`
+                    });
                 }).join('');
 
             // Pagination controls
@@ -1314,21 +1360,7 @@
                             html += `<span style="font-size:11px;color:var(--text-secondary);">点击查看详情（共 ${d.sources.length} 条）</span>`;
                             html += `</div>`;
                             d.sources.forEach((s, i) => {
-                                const src = s.source || '';
-                                const b = badge(src);
-                                const bn = badgeName(src);
-                                const nm = name(src);
-                                const preview = (s.text || '').substring(0, 80);
-                                const meta = s.metadata || {};
-                                const title = meta.title || nm;
-                                html += `<div class="source-item" id="src-${i}" onclick="openSourceModal(${i})">`;
-                                html += `<div class="source-header">`;
-                                html += `<i class="source-chevron ri-arrow-right-s-line"></i>`;
-                                html += `<span class="source-badge ${b}">${bn}</span>`;
-                                html += `<span class="source-name" title="${title}">${title}</span>`;
-                                html += `<span class="source-preview">${preview}...</span>`;
-                                html += `</div>`;
-                                html += `</div>`;
+                                html += renderDocItem(s, {onclick: `openSourceModal(${i})`});
                             });
                             html += `</div>`;
                             currentSources = d.sources;
@@ -1953,26 +1985,25 @@
                 return;
             }
 
-            const badgeColor = {manual:'#9c27b0', minimax:'#00bcd4', github:'#b39ddb', dir:'#f39c12', url:'#2ecc71', file:'#f39c12'};
-            const badgeName = {manual:'手动输入', minimax:'MiniMax', github:'GitHub', dir:'目录', url:'网页', file:'文件'};
+            // Build full chunk objects from graph node data for renderDocItem
+            const fullChunks = relatedChunks.map(n => {
+                const src = n.source || '';
+                // For dir: source, extract filename from label or source path
+                let metadata = n.metadata || {};
+                if (src.startsWith('dir:') && n.label && !metadata.relative_path) {
+                    metadata = {...metadata, relative_path: n.label};
+                }
+                return {
+                    id: n.id,
+                    source: src || (n.source_type ? n.source_type + ':' : 'manual'),
+                    text: n.text || n.preview || '',
+                    metadata: metadata
+                };
+            });
 
-            list.innerHTML = relatedChunks.map(c => {
-                const src = c.source_type || 'manual';
-                const color = badgeColor[src] || '#9c27b0';
-                const name = badgeName[src] || src;
-                const label = c.label || c.id;
-                const preview = c.preview || '';
-                return `<div class="related-item" onclick="openGraphChunkModal('${c.id}')">
-                    <div class="related-icon" style="color:${color};"><i class="ri-file-text-line"></i></div>
-                    <div class="related-info">
-                        <div class="related-name" title="${label}">${label}</div>
-                        <div class="related-preview">${preview}</div>
-                    </div>
-                    <div class="related-meta">
-                        <span style="color:${color};font-size:11px;">${name}</span>
-                    </div>
-                </div>`;
-            }).join('');
+            list.innerHTML = fullChunks.map((c, i) =>
+                renderDocItem(c, {onclick: `openGraphChunkModal('${c.id}')`})
+            ).join('');
 
             panel.style.display = 'block';
         }
