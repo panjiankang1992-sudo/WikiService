@@ -716,8 +716,6 @@ def knowledge_graph():
         nodes = []
         links = []
         entity_map = {}
-        source_map = {}
-
         # Known tech/entity patterns
         TECH_TERMS = {
             'docker', 'kubernetes', 'python', 'javascript', 'typescript',
@@ -736,16 +734,7 @@ def knowledge_graph():
         for chunk in chunks:
             text = chunk['text']
             source = chunk['source']
-
-            # --- Source type node ---
             source_type = source.split(':')[0]
-            if source_type not in source_map:
-                source_map[source_type] = {
-                    "id": f"source:{source_type}",
-                    "label": {"manual":"手动输入","url":"网页","github":"GitHub","dir":"目录","file":"文件","minimax":"MiniMax文档"}.get(source_type, source_type),
-                    "type": "source"
-                }
-                nodes.append(source_map[source_type])
 
             # --- Chunk node ---
             # Label: priority — metadata.title > metadata.path filename > GitHub path > first meaningful line
@@ -785,13 +774,6 @@ def knowledge_graph():
                 "source_type": source_type
             }
             nodes.append(chunk_node)
-
-            # Link chunk to its source type
-            links.append({
-                "source": f"source:{source_type}",
-                "target": chunk['id'],
-                "type": "belongs_to"
-            })
 
             # --- Extract entities ---
             entities_in_chunk = set()
@@ -880,7 +862,7 @@ def knowledge_graph():
             "stats": {
                 "total_chunks": len(chunks),
                 "total_entities": len(good_entities),
-                "total_sources": len(source_map),
+                "total_sources": len({c['source'].split(':')[0] for c in chunks}),
                 "total_links": len(filtered_links)
             }
         })

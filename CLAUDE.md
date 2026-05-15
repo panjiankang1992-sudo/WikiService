@@ -103,9 +103,66 @@ WikiService/
 
 ---
 
+## Deployment Conventions
+
+### 目录约定
+
+| 用途 | 路径 |
+|------|------|
+| **开发目录** | `/Users/pankang/mycode/WikiService/lightrag` |
+| **部署目录** | `/opt/yuyutian/WikiService` |
+| **日志目录** | `/opt/yuyutian/logs/WikiService` |
+| **端口范围** | 23100-23109（通过 `PORT` 环境变量指定，默认 23100） |
+| **数据目录** | `/opt/yuyutian/WikiService/data`（部署时独立，不随代码同步） |
+
+### 开发工作流
+
+**开发调试（当前目录）：**
+```bash
+cd /Users/pankang/mycode/WikiService/lightrag
+DEEPSEEK_API_KEY=your_key .venv/bin/python app.py
+# 默认端口 8080，无日志文件，仅输出到 stderr
+```
+
+**部署发布（同步到部署机）：**
+```bash
+cd /Users/pankang/mycode/WikiService/lightrag
+
+# 方式一：使用部署脚本（自动同步代码）
+./deploy.sh
+PORT=23100 DEEPSEEK_API_KEY=your_key .venv/bin/python app.py
+
+# 方式二：手动 rsync
+rsync -av --exclude='.venv' --exclude='data' . /opt/yuyutian/WikiService/
+```
+
+**日志查看：**
+```bash
+tail -f /opt/yuyutian/logs/WikiService/wikiservice_23100.log
+```
+
+---
+
 ## Development Workflow
 
-### Build & Run
+### Standalone LightRAG Service
+
+**开发调试（当前目录）：**
+```bash
+cd /Users/pankang/mycode/WikiService/lightrag
+./start.sh                    # 默认 8080，使用本地 ./data 目录
+./start.sh 9000               # 指定端口 9000
+DEEPSEEK_API_KEY=your_key ./start.sh  # 指定 API Key
+```
+
+**部署发布（同步代码后启动）：**
+```bash
+cd /Users/pankang/mycode/WikiService/lightrag && ./deploy.sh
+cd /opt/yuyutian/WikiService
+PORT=23100 DEEPSEEK_API_KEY=your_key .venv/bin/python app.py
+```
+
+### Docker Compose (Full Stack)
 
 ```bash
 # Start all services (WeKnora + Neo4j + Postgres + Crawler)
@@ -171,31 +228,20 @@ The file [`WikiServer_服务器版 Wiki 完整实现方案.md`](./WikiServer_服
 
 ## Current Status
 
-**Implementation Complete (2026-05-10)**
+**Implementation Complete (2026-05-15)**
 
-All 3 phases of the 15-day plan have been implemented:
+### LightRAG Standalone Service ✅
+- **开发目录**: `/Users/pankang/mycode/WikiService/lightrag`（当前工作目录）
+- **部署目录**: `/opt/yuyutian/WikiService`（`./deploy.sh` 同步）
+- **端口**: 23100（范围 23100-23109）
+- **日志**: `/opt/yuyutian/logs/WikiService/wikiservice_{PORT}.log`
+- **功能**: 知识图谱 (D3.js)、多源 ingestion、全文搜索、Markdown 渲染、`[[Wiki链接]]` 导航
 
-### Phase 1: Core Deployment ✅
-- WeKnora Docker Compose deployment (API + UI + Neo4j + PostgreSQL + pgvector)
-- Configurable embedding model support (SiliconFlow BGE-M3 / Jina AI / custom)
-- Test data imported (microservices, K8s, API gateway docs)
-- MCP tools implemented (search, graph exploration, ingestion triggers)
-
-### Phase 2: Multi-source Ingestion ✅
-- Crawl4AI integration with scheduled crawling
-- Git Ingester with incremental updates (SHA256 deduplication)
-- File Watcher using watchdog for real-time sync
-- APScheduler unified orchestration layer
-
-### Phase 3: Production Features ✅
-- Monitoring stack (Prometheus + Grafana + Alertmanager)
-- Alert rules (service availability, resource usage, application metrics)
-- Backup scripts (PostgreSQL dump, Neo4j backup, storage sync)
-- Complete documentation (DEPLOYMENT.md with troubleshooting guide)
+### WeKnora Full Stack (Docker Compose) ✅
+- Phase 1: Core deployment (Neo4j + PostgreSQL + pgvector)
+- Phase 2: Multi-source ingestion (Crawl4AI, Git Ingester, File Watcher)
+- Phase 3: Production features (Prometheus + Grafana monitoring, backup scripts)
 
 ### Next Steps for Users
-1. Configure `.env` with your embedding API key
-2. Run `docker-compose -f docker-compose.prod.yml up -d`
-3. Access WeKnora UI at http://localhost:8080
-4. Configure your data sources in `crawler/sources.yaml` and `scheduler/config.yaml`
-5. Set up monitoring with `docker-compose -f monitoring/docker-compose.monitoring.yml up -d`
+1. **开发调试**: `cd /Users/pankang/mycode/WikiService/lightrag && DEEPSEEK_API_KEY=xxx .venv/bin/python app.py`
+2. **部署发布**: `cd /Users/pankang/mycode/WikiService/lightrag && ./deploy.sh && cd /opt/yuyutian/WikiService && PORT=23100 DEEPSEEK_API_KEY=xxx .venv/bin/python app.py`

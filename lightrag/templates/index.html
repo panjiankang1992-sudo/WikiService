@@ -505,9 +505,6 @@
                         <label class="graph-filter-toggle active" data-type="entity" onclick="toggleGraphType(this)">
                             <svg width="10" height="10"><polygon points="5,0 10,5 5,10 0,5" fill="#5b8def"/></svg> 实体
                         </label>
-                        <label class="graph-filter-toggle active" data-type="source" onclick="toggleGraphType(this)">
-                            <svg width="12" height="8"><rect x="1" y="1" width="10" height="6" rx="2" fill="#2ecc71"/></svg> 来源
-                        </label>
                         <span style="font-size:12px;color:var(--text-secondary);margin-left:10px;margin-right:4px;">滚轮：</span>
                         <label class="graph-filter-toggle" id="wheel-zoom-toggle" onclick="toggleWheelZoom(this)" title="开启后可用鼠标滚轮缩放图谱">
                             <svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> 滚轮缩放
@@ -537,7 +534,6 @@
                         <div class="graph-legend">
                             <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#9c27b0"/></svg> 知识条目</span>
                             <span><svg width="12" height="12"><polygon points="6,0 12,6 6,12 0,6" fill="#5b8def"/></svg> 实体概念</span>
-                            <span><svg width="14" height="10"><rect x="1" y="1" width="12" height="8" rx="3" fill="#2ecc71"/></svg> 来源分类</span>
                             <span id="graph-stat" style="color:var(--text-secondary);"></span>
                             <span class="graph-legend-hint"><i class="ri-mouse-line"></i>点击节点查看关联</span>
                         </div>
@@ -845,10 +841,10 @@
             if (fileType === 'pdf') {
                 return `<div class="doc-notice"><i class="ri-file-pdf-2-line"></i> PDF 文件已提供下载按钮查看原文。</div><pre style="white-space:pre-wrap;word-break:break-word;opacity:0.6;font-family:inherit">${wiki}</pre>`;
             }
-            // Markdown (default): parse with marked.js
+            // Markdown (default): parse with marked.js, applying wiki-link conversion first
             if (typeof marked !== 'undefined') {
                 try {
-                    return marked.parse(body, {breaks: true, gfm: true});
+                    return marked.parse(wiki, {breaks: true, gfm: true});
                 } catch(e) {
                     return wiki;
                 }
@@ -1361,7 +1357,7 @@
         let _graphNodesData = null;
         let _graphLinksData = null;
         let _graphFilterText = '';
-        let _graphFilterTypes = { chunk: true, entity: true, source: true };
+        let _graphFilterTypes = { chunk: true, entity: true };
         let _graphForcedVisible = new Set(); // nodes forced visible (selected + true neighbors)
         let _wheelZoomEnabled = false; // wheel zoom toggle state
         let _graphInitialFitDone = false; // one-time initial fit after first render
@@ -1407,7 +1403,7 @@
             const padding = 60;
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             visible.forEach(n => {
-                const r = n.type === 'source' ? 22 : n.type === 'chunk' ? 14 : 10;
+                const r = n.type === 'chunk' ? 14 : 10;
                 if (n.x - r < minX) minX = n.x - r;
                 if (n.x + r > maxX) maxX = n.x + r;
                 if (n.y - r < minY) minY = n.y - r;
@@ -1537,12 +1533,15 @@
                 svgEl.setAttribute('id', 'graph-svg');
                 svgEl.setAttribute('width', W);
                 svgEl.setAttribute('height', H);
-                svgEl.style.display = 'block';
+                svgEl.setAttribute('overflow', 'hidden');
+                svgEl.style.cssText = 'display:block;overflow:hidden;width:' + W + 'px;height:' + H + 'px;';
                 container.appendChild(svgEl);
             } else {
                 svgEl.innerHTML = '';
                 svgEl.setAttribute('width', W);
                 svgEl.setAttribute('height', H);
+                svgEl.setAttribute('overflow', 'hidden');
+                svgEl.style.cssText = 'display:block;overflow:hidden;width:' + W + 'px;height:' + H + 'px;';
             }
 
             fetch("/api/graph").then(r => r.json()).then(data => {
@@ -1602,10 +1601,10 @@
                 // Transparent background rect — catches clicks on empty areas (not on nodes)
                 g.append('rect')
                     .attr('id', 'graph-bg-click')
-                    .attr('x', -W * 10)
-                    .attr('y', -H * 10)
-                    .attr('width', W * 20)
-                    .attr('height', H * 20)
+                    .attr('x', 0)
+                    .attr('y', 0)
+                    .attr('width', W)
+                    .attr('height', H)
                     .attr('fill', 'transparent')
                     .attr('pointer-events', 'all');
 
@@ -1660,16 +1659,6 @@
                     .attr('stroke-width', 2)
                     .attr('fill-opacity', 0.9);
 
-                node.filter(d => d.type === 'source')
-                    .append('rect')
-                    .attr('x', -22).attr('y', -14)
-                    .attr('width', 44).attr('height', 28)
-                    .attr('rx', 8)
-                    .attr('fill', '#2ecc71')
-                    .attr('stroke', '#a9dfbf')
-                    .attr('stroke-width', 2)
-                    .attr('fill-opacity', 0.9);
-
                 node.filter(d => d.type === 'entity')
                     .append('polygon')
                     .attr('points', '0,-10 10,0 0,10 -10,0')
@@ -1680,7 +1669,7 @@
 
                 // Labels for all node types
                 node.append('text')
-                    .attr('dy', d => d.type === 'source' ? 4 : d.type === 'chunk' ? -14 : -12)
+                    .attr('dy', d => d.type === 'chunk' ? -14 : -12)
                     .attr('text-anchor', 'middle')
                     .attr('font-size', 10)
                     .attr('fill', '#aaa')
@@ -1700,11 +1689,17 @@
                 const tipSource = document.getElementById('tip-source');
                 const tipMeta = document.getElementById('tip-meta');
 
-                // Block D3 zoom click when user clicks a node
-                node.on('mousedown', () => { _graphNodeClickActive = true; });
-                node.on('click', () => {
-                    // Clear AFTER D3 zoom filter has checked it (via rAF)
-                    requestAnimationFrame(() => { _graphNodeClickActive = false; });
+                // Block D3 zoom from intercepting node clicks so the node's own
+                // click handler can fire without being blocked by the zoom filter.
+                // stopImmediatePropagation stops the event from reaching D3 zoom's
+                // SVG-level listeners (which run in the bubble phase after node handlers).
+                node.on('mousedown', (event) => {
+                    event.stopImmediatePropagation();
+                    _graphNodeClickActive = true;
+                });
+                node.on('click', (event) => {
+                    event.stopImmediatePropagation();
+                    _graphNodeClickActive = false;
                 });
 
                 node.on('mouseover', (event, d) => {
@@ -1765,10 +1760,10 @@
 
                 // Force simulation — balanced layout
                 graphSimulation = d3.forceSimulation(nodes)
-                    .force('link', d3.forceLink(links).id(d => d.id).distance(d => d.type === 'source' ? 120 : 60).strength(0.6))
+                    .force('link', d3.forceLink(links).id(d => d.id).distance(60).strength(0.6))
                     .force('charge', d3.forceManyBody().strength(d => d.type === 'entity' ? -80 : -200))
                     .force('center', d3.forceCenter(W / 2, H / 2).strength(0.05))
-                    .force('collision', d3.forceCollide().radius(d => d.type === 'chunk' ? 28 : d.type === 'source' ? 36 : 16))
+                    .force('collision', d3.forceCollide().radius(d => d.type === 'chunk' ? 28 : 16))
                     .force('x', d3.forceX(W / 2).strength(0.02))
                     .force('y', d3.forceY(H / 2).strength(0.02))
                     .alphaDecay(0.02)
@@ -1938,21 +1933,13 @@
 
             const nodes = _graphNodesData || [];
             // For entity: show connected chunks
-            // For chunk: show itself + related entities
-            // For source: show connected chunks
+            // For chunk: show itself + related entities via graph links
             let relatedChunks = [];
             if (selectedNode.type === 'entity') {
-                // Find all chunks connected to this entity
                 relatedChunks = nodes.filter(n => n.type === 'chunk' && connectedIds.has(n.id));
             } else if (selectedNode.type === 'chunk') {
-                // Show this chunk and sibling chunks (same source type)
-                const sameSource = nodes.filter(n => n.type === 'chunk' && n.source_type === selectedNode.source_type && n.id !== selectedNode.id && connectedIds.has(n.id));
                 const self = nodes.find(n => n.id === selectedNode.id);
-                if (self) relatedChunks = [self, ...sameSource.slice(0, 5)];
-            } else if (selectedNode.type === 'source') {
-                // Show all chunks of this source type
-                const sourceType = selectedNode.id.replace('source:', '');
-                relatedChunks = nodes.filter(n => n.type === 'chunk' && n.source_type === sourceType).slice(0, 10);
+                if (self) relatedChunks = [self];
             }
 
             // Deduplicate
