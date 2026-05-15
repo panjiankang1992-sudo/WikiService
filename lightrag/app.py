@@ -881,38 +881,39 @@ def query():
             else:
                 doc_map[did]['_score'] = max(doc_map[did]['_score'], sim_score)
 
-        # 4. 语义排序 + 关键词过滤（检查 title + text）
-        def keyword_hits(doc_title: str, doc_text: str, q: str) -> int:
-            combined = f"{doc_title} {doc_text or ''}"
-            text_lower = combined.lower()
-            q_lower = q.lower()
-            hits = 0
-            # English words: +2 each
-            for kw in re.findall(r'[a-zA-Z]{2,}', q_lower):
-                if kw in text_lower:
-                    hits += 2
-            # Chinese contiguous phrase match: +5 (strong signal)
-            cn_phrases = re.findall(r'[一-鿿]{2,}', q)
-            for phrase in cn_phrases:
-                if phrase in combined:
-                    hits += 5
-            # Chinese bigram match: +2 (catches non-contiguous matches)
+        # 4. 语义排序 + 关键词过滤（title 命中为强信号）
+        def keyword_signals(doc_title: str, doc_text: str, q: str) -> int:
+            """
+            计算 title 的关键词命中分数（使用 .find() 避免单字符误匹配）
+            - English word: +5
+            - Chinese phrase: +10
+            - Chinese bigram: +3（必须连续两字都来自 query）
+            """
             cn_chars = re.findall(r'[一-鿿]', q)
+            en_words = re.findall(r'[a-zA-Z]{2,}', q.lower())
+            cn_phrases = re.findall(r'[一-鿿]{2,}', q)
+            score = 0
+            for w in en_words:
+                if w in doc_title.lower():
+                    score += 5
+            for ph in cn_phrases:
+                if doc_title.find(ph) >= 0:
+                    score += 10
             for i in range(len(cn_chars) - 1):
                 bg = cn_chars[i] + cn_chars[i + 1]
-                if bg in combined:
-                    hits += 2
-            return hits
+                if doc_title.find(bg) >= 0:
+                    score += 3
+            return score
 
         scored_docs = []
         for doc in doc_map.values():
             sem_score = doc['_score']
-            kw_score = keyword_hits(doc.get('title', ''), doc.get('text', ''), question)
-            # 推荐：语义>=0.50 且 关键词>=3（至少一个 CN 词组命中）
-            # 可能：语义>=0.33 且 关键词>=3
-            if sem_score >= 0.50 and kw_score >= 3:
+            title_kw = keyword_signals(doc.get('title', ''), doc.get('text', ''), question)
+            # HIGH: title 有 >= 2 个 bigram 命中 且 语义 >= 0.50
+            # MEDIUM: title 有 >= 1 个 bigram 命中 且 语义 >= 0.33
+            if title_kw >= 6 and sem_score >= 0.50:
                 doc['_rel'] = 'high'
-            elif sem_score >= 0.33 and kw_score >= 3:
+            elif title_kw >= 3 and sem_score >= 0.33:
                 doc['_rel'] = 'medium'
             else:
                 doc['_rel'] = 'skip'
