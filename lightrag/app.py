@@ -718,8 +718,10 @@ def get_doc_id(chunk: dict) -> str:
     elif src_type == 'url':
         return f"url:{src.replace('url:', '')}"
     elif src_type == 'github':
+        path = meta.get('path', '')
         parts = src.split(':')
-        return f"github:{':'.join(parts[1:])}"
+        repo = parts[1] if len(parts) > 1 else ''
+        return f"github:{repo}:{path}" if path else f"github:{repo}"
     elif src_type == 'minimax':
         parts = src.split(':')
         return f"minimax:{':'.join(parts[1:])}"
@@ -757,9 +759,11 @@ def get_doc_info(chunk: dict) -> dict:
         domain = src.replace('url:', '').replace('https://', '').replace('http://', '').split('/')[0]
         sub = domain
     elif src_type == 'github':
-        path = ':'.join(src.split(':')[2:])
-        file_name = path.split('/')[-1] if path else ''
+        # source 中不含 path，path 在 metadata 里
+        file_path = meta.get('path', '') or ':'.join(src.split(':')[2:])
+        file_name = file_path.split('/')[-1] if file_path else ''
         title = doc_title or meta.get('title', '') or file_name or 'GitHub 文档'
+        sub = ':'.join(src.split(':')[1:])  # repo 名
     elif src_type == 'minimax':
         name = ':'.join(src.split(':')[1:])
         title = doc_title or meta.get('title', '') or name
@@ -871,49 +875,88 @@ def query():
             scored = keyword_search(question, chunks, top_k=len(chunks))
             search_mode = "keyword"
 
-        # 3. 按文档聚合，取每文档最高分
+        # 3. 按文档聚合：优先保留有意义的标题（markdown 标题），同时取最高语义分
         doc_map = {}
+        GENERIC_TITLES = {'GitHub 文档', 'manual', '其他', '未命名文档'}
         for sim_score, chunk in scored:
             did = get_doc_id(chunk)
+            new_info = get_doc_info(chunk)
+            new_title = new_info.get('title', '')
+            new_is_generic = new_title in GENERIC_TITLES
             if did not in doc_map:
-                doc_map[did] = get_doc_info(chunk)
+                doc_map[did] = new_info
                 doc_map[did]['_score'] = sim_score
             else:
-                doc_map[did]['_score'] = max(doc_map[did]['_score'], sim_score)
+                curr = doc_map[did]
+                curr_is_generic = curr.get('title', '') in GENERIC_TITLES
+                # 有意义标题优先，无论分数高低都替换通用标题
+                if new_is_generic and not curr_is_generic:
+                    # 当前有意义，新的是通用：保留当前
+                    curr['_score'] = max(curr['_score'], sim_score)
+                elif not new_is_generic and curr_is_generic:
+                    # 当前是通用，新的是有意义：替换
+                    doc_map[did] = new_info
+                    doc_map[did]['_score'] = sim_score
+                elif not new_is_generic and not curr_is_generic:
+                    # 两者都有意义：保留更高语义分的
+                    if sim_score > curr['_score']:
+                        doc_map[did] = new_info
+                        doc_map[did]['_score'] = sim_score
+                    else:
+                        curr['_score'] = max(curr['_score'], sim_score)
+                else:
+                    # 两者都是通用：取更高语义分
+                    curr['_score'] = max(curr['_score'], sim_score)
 
         # 4. 语义排序 + 关键词过滤（title 命中为强信号）
-        def keyword_signals(doc_title: str, doc_text: str, q: str) -> int:
+        def keyword_signals(doc_title: str, q: str) -> dict:
             """
-            计算 title 的关键词命中分数（使用 .find() 避免单字符误匹配）
-            - English word: +5
-            - Chinese phrase: +10
-            - Chinese bigram: +3（必须连续两字都来自 query）
+            返回 title 的关键词命中详情：
+            - phrase_hit: 完整查询词组是否在 title 中
+            - n_bigrams: query 中非重叠连续字符组的 title 命中数
+              （每 2 个相邻 query 字为 1 组，title 含该 2 字即算命中）
+            - en_hit: EN 词命中（词边界匹配）
             """
             cn_chars = re.findall(r'[一-鿿]', q)
             en_words = re.findall(r'[a-zA-Z]{2,}', q.lower())
             cn_phrases = re.findall(r'[一-鿿]{2,}', q)
-            score = 0
-            for w in en_words:
-                if w in doc_title.lower():
-                    score += 5
-            for ph in cn_phrases:
-                if doc_title.find(ph) >= 0:
-                    score += 10
-            for i in range(len(cn_chars) - 1):
+
+            # 完整词组命中
+            phrase_hit = any(doc_title.find(ph) >= 0 for ph in cn_phrases)
+
+            # EN 词命中（词边界匹配，避免 "json" 命中 "tsconfig.json"）
+            en_hit = any(re.search(r'\b' + re.escape(w) + r'\b', doc_title.lower()) for w in en_words)
+
+            # 非重叠 bigram 计数（每 2 相邻字为一组，title 含该 2 字即算命中）
+            # 对于 "微服务架构" -> ['微服务', '架构'] -> 2 组
+            # 对于 "微信朋友圈" -> ['微信', '朋友圈'] -> 2 组
+            # 对于 "部署" -> [] -> 0 组（无 bigram）
+            n_bigrams = 0
+            for i in range(0, len(cn_chars) - 1, 2):  # 步长 2，非重叠
                 bg = cn_chars[i] + cn_chars[i + 1]
                 if doc_title.find(bg) >= 0:
-                    score += 3
-            return score
+                    n_bigrams += 1
+
+            return {
+                'phrase_hit': phrase_hit,
+                'en_hit': en_hit,
+                'n_bigrams': n_bigrams
+            }
 
         scored_docs = []
         for doc in doc_map.values():
             sem_score = doc['_score']
-            title_kw = keyword_signals(doc.get('title', ''), doc.get('text', ''), question)
-            # HIGH: title 有 >= 2 个 bigram 命中 且 语义 >= 0.50
-            # MEDIUM: title 有 >= 1 个 bigram 命中 且 语义 >= 0.33
-            if title_kw >= 6 and sem_score >= 0.50:
+            sig = keyword_signals(doc.get('title', ''), question)
+            phrase_hit = sig['phrase_hit']
+            en_hit = sig['en_hit']
+            n_bigrams = sig['n_bigrams']
+
+            # HIGH: 关键词命中（phrase/bigram/en）且 语义 >= 0.50
+            # MEDIUM: 关键词命中（phrase/bigram/en）且 语义 >= 0.30
+            # 无关键词时不依赖纯语义兜底（MEDIUM B 移除 — 0.50-0.55 区间噪声太多）
+            if (phrase_hit or n_bigrams >= 2 or en_hit) and sem_score >= 0.50:
                 doc['_rel'] = 'high'
-            elif title_kw >= 3 and sem_score >= 0.33:
+            elif (phrase_hit or n_bigrams >= 1 or en_hit) and sem_score >= 0.30:
                 doc['_rel'] = 'medium'
             else:
                 doc['_rel'] = 'skip'
