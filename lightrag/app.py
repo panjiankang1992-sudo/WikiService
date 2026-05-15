@@ -637,7 +637,7 @@ def get_embedding(text: str) -> list:
     provider = EMBEDDING_PROVIDER.lower()
 
     if provider == "ollama":
-        payload = {"model": EMBEDDING_MODEL, "input": text[:8000]}
+        payload = {"model": EMBEDDING_MODEL, "prompt": text[:8000]}
         with httpx.Client(timeout=120.0) as client:
             resp = client.post(f"{EMBEDDING_BASE_URL}/api/embeddings", json=payload)
             resp.raise_for_status()
@@ -842,7 +842,7 @@ def keyword_search(query: str, chunks: list, top_k: int = 20) -> list:
 
 @app.route('/api/query', methods=['POST'])
 def query():
-    """关键词搜索（无外部 API 调用，毫秒级响应）"""
+    """语义搜索 + 关键词 fallback，完全本地（Ollama），毫秒级响应"""
     data = request.json
     question = data.get('question', '')
 
@@ -860,29 +860,75 @@ def query():
         if not chunks:
             return jsonify({"documents": {"high": [], "medium": []}})
 
-        # 1. 关键词搜索（完全本地，无网络调用）
-        scored = keyword_search(question, chunks, top_k=50)
+        # 1. 尝试语义搜索（Ollama，本地）
+        embeddings = compute_all_embeddings(chunks)
+        scored = semantic_search(question, chunks, embeddings, top_k=len(chunks))
 
-        # 2. 按文档聚合，取每文档最高分
+        # 2. 无语义结果时降级为关键词搜索
+        search_mode = "semantic"
+        if not scored:
+            logger.info("语义搜索无结果，降级为关键词搜索")
+            scored = keyword_search(question, chunks, top_k=len(chunks))
+            search_mode = "keyword"
+
+        # 3. 按文档聚合，取每文档最高分
         doc_map = {}
-        for kw_score, chunk in scored:
+        for sim_score, chunk in scored:
             did = get_doc_id(chunk)
             if did not in doc_map:
                 doc_map[did] = get_doc_info(chunk)
-                doc_map[did]['_score'] = kw_score
+                doc_map[did]['_score'] = sim_score
             else:
-                doc_map[did]['_score'] = max(doc_map[did]['_score'], kw_score)
+                doc_map[did]['_score'] = max(doc_map[did]['_score'], sim_score)
 
-        # 3. 用关键词得分直接分类（无 LLM）
-        # high: score >= 15（强相关）  medium: score >= 5（部分相关）
-        categorized = {"high": [], "medium": []}
+        # 4. 语义排序 + 关键词过滤（检查 title + text）
+        def keyword_hits(doc_title: str, doc_text: str, q: str) -> int:
+            combined = f"{doc_title} {doc_text or ''}"
+            text_lower = combined.lower()
+            q_lower = q.lower()
+            hits = 0
+            # English words: +2 each
+            for kw in re.findall(r'[a-zA-Z]{2,}', q_lower):
+                if kw in text_lower:
+                    hits += 2
+            # Chinese contiguous phrase match: +5 (strong signal)
+            cn_phrases = re.findall(r'[一-鿿]{2,}', q)
+            for phrase in cn_phrases:
+                if phrase in combined:
+                    hits += 5
+            # Chinese bigram match: +2 (catches non-contiguous matches)
+            cn_chars = re.findall(r'[一-鿿]', q)
+            for i in range(len(cn_chars) - 1):
+                bg = cn_chars[i] + cn_chars[i + 1]
+                if bg in combined:
+                    hits += 2
+            return hits
+
+        scored_docs = []
         for doc in doc_map.values():
-            score = doc['_score']
-            if score >= 15:
+            sem_score = doc['_score']
+            kw_score = keyword_hits(doc.get('title', ''), doc.get('text', ''), question)
+            # 推荐：语义>=0.50 且 关键词>=3（至少一个 CN 词组命中）
+            # 可能：语义>=0.33 且 关键词>=3
+            if sem_score >= 0.50 and kw_score >= 3:
+                doc['_rel'] = 'high'
+            elif sem_score >= 0.33 and kw_score >= 3:
+                doc['_rel'] = 'medium'
+            else:
+                doc['_rel'] = 'skip'
+            scored_docs.append(doc)
+
+        scored_docs.sort(key=lambda x: (0 if x['_rel'] == 'skip' else 1, -(x['_score'])), reverse=True)
+
+        categorized = {"high": [], "medium": []}
+        for doc in scored_docs:
+            rel = doc.pop('_rel')
+            if rel == 'high':
                 categorized["high"].append(doc)
-            elif score >= 5:
+            elif rel == 'medium':
                 categorized["medium"].append(doc)
-            # < 5 分的跳过（低相关，不展示）
+            if len(categorized["high"]) + len(categorized["medium"]) >= 20:
+                break
 
         # 清理内部字段
         for lst in categorized.values():
@@ -892,7 +938,8 @@ def query():
 
         return jsonify({
             "documents": categorized,
-            "chunks_searched": len(scored)
+            "chunks_searched": len(scored),
+            "search_mode": search_mode
         })
 
     except Exception as e:
