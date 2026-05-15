@@ -624,20 +624,38 @@ def ingest_file():
 # 语义搜索模块：Embedding + 文档聚合 + LLM 评分
 # ============================================================
 
+# Embedding 提供者配置（默认 Ollama 本地，后续换成内网模型）
+# 优先级：Ollama > DeepSeek > 关键词搜索
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")  # ollama | deepseek | keyword
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "http://localhost:11434")
-EMBEDDING_DIM = 768  # nomic-embed-text 输出 768 维
+EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "http://localhost:11434")  # Ollama 地址
 
 
 def get_embedding(text: str) -> list:
-    """调用本地 Ollama（或其他兼容 API）获取文本向量"""
+    """获取文本向量（支持 Ollama / DeepSeek / OpenAI 兼容端点）"""
     import httpx
-    # Ollama API 格式
-    payload = {"model": EMBEDDING_MODEL, "input": text[:8000]}
-    with httpx.Client(timeout=120.0) as client:
-        resp = client.post(f"{EMBEDDING_BASE_URL}/api/embeddings", json=payload)
+    provider = EMBEDDING_PROVIDER.lower()
+
+    if provider == "ollama":
+        payload = {"model": EMBEDDING_MODEL, "input": text[:8000]}
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.post(f"{EMBEDDING_BASE_URL}/api/embeddings", json=payload)
+            resp.raise_for_status()
+            return resp.json()["embedding"]
+
+    # DeepSeek / OpenAI 兼容格式
+    # 注意：端点是 /v1/embeddings，模型名是 deepseek-embedding
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    base_url = os.getenv("EMBEDDING_BASE_URL", "https://api.deepseek.com")
+    model = os.getenv("EMBEDDING_MODEL", "deepseek-embedding")
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {"model": model, "input": text[:8000]}
+
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.post(f"{base_url}/v1/embeddings", headers=headers, json=payload)
         resp.raise_for_status()
-        return resp.json()["embedding"]
+        return resp.json()["data"][0]["embedding"]
 
 
 def cosine_similarity(a: list, b: list) -> float:

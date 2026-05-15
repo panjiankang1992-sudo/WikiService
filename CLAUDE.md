@@ -10,12 +10,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Core Stack:**
 - **Knowledge Core**: WeKnora (Wiki + Knowledge Graph + MCP Server + WebUI)
-- **Vector Store**: pgvector (PostgreSQL)
-- **Graph Engine**: Neo4j
-- **Embedding**: SiliconFlow BGE-M3 (HTTP API)
-- **Web Crawler**: Crawl4AI (scheduled deep crawling with auth support)
-- **Git Ingester**: Custom Python script for repository documentation extraction
-- **Scheduler**: APScheduler (cron-based)
+- **Embedding**: Ollama 本地模型（`nomic-embed-text`，默认）/ 内网模型
+- **Search**: 语义向量搜索（Embedding + 余弦相似度） + 关键词 BM25 Fallback
+- **AI 评分**: DeepSeek Chat API（内网部署时切换为本地 LLM）
+- **Web Crawler**: Crawl4AI（支持认证的定时深度抓取）
+- **Git Ingester**: 自定义 Python 脚本提取仓库文档
+- **Scheduler**: APScheduler（cron 定时调度）
+
+---
+
+## 网络策略（强制）
+
+> **禁止主动连接外网。** 所有服务均在内网运行，不依赖外部 API。
+
+**Embedding 模型（必须本地）：**
+- 默认：Ollama (`nomic-embed-text`)，地址 `http://localhost:11434`
+- 内网部署：设置 `EMBEDDING_BASE_URL` 指向内网 Ollama 服务
+- 配置项：
+  ```bash
+  EMBEDDING_PROVIDER=ollama          # ollama | deepseek
+  EMBEDDING_BASE_URL=http://192.168.x.x:11434
+  EMBEDDING_MODEL=nomic-embed-text
+  ```
+
+**DeepSeek API（可选，仅开发调试）：**
+- 端点：`POST https://api.deepseek.com/v1/embeddings`
+- 模型：`deepseek-embedding`（1536 维）
+- 仅开发时使用，**生产必须切换为内网模型**
+
+**搜索流程：**
+1. 尝试 Ollama/内网 Embedding（毫秒级，本地）
+2. 失败时降级为关键词 BM25 搜索（无需网络）
+3. 匹配文档 → LLM 评分归类（推荐/可能相关/其他）
 
 ---
 
@@ -235,7 +261,7 @@ The file [`WikiServer_服务器版 Wiki 完整实现方案.md`](./WikiServer_服
 - **部署目录**: `/opt/yuyutian/WikiService`（`./deploy.sh` 同步）
 - **端口**: 23100（范围 23100-23109）
 - **日志**: `/opt/yuyutian/logs/WikiService/wikiservice_{PORT}.log`
-- **功能**: 知识图谱 (D3.js)、多源 ingestion、全文搜索、Markdown 渲染、`[[Wiki链接]]` 导航
+- **功能**: 知识图谱 (D3.js)、多源 ingestion、全文搜索、语义搜索 + LLM 文档评分（推荐/可能相关/其他）、Markdown 渲染、`[[Wiki链接]]` 导航
 
 ### WeKnora Full Stack (Docker Compose) ✅
 - Phase 1: Core deployment (Neo4j + PostgreSQL + pgvector)
