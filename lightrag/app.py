@@ -9,11 +9,33 @@ import json
 import uuid
 import re
 import hashlib
+import logging
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
-print("Starting WikiService Knowledge Base...", file=sys.stderr)
+# 端口配置（23100-23109）
+PORT = int(os.getenv("PORT", 23100))
+assert 23100 <= PORT <= 23109, f"PORT must be between 23100 and 23109, got {PORT}"
+
+# 日志目录
+LOG_DIR = os.getenv("LOG_DIR", "/opt/yuyutian/logs/WikiService")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# 配置日志：同时输出到 stderr 和文件
+log_file = os.path.join(LOG_DIR, f"wikiservice_{PORT}.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(log_file, encoding="utf-8"),
+        logging.StreamHandler(sys.stderr),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+print(f"Starting WikiService Knowledge Base...", file=sys.stderr)
+print(f"Log file: {log_file}", file=sys.stderr)
 
 app = Flask(__name__, template_folder='templates')
 CORS(app)
@@ -27,7 +49,7 @@ if not DEEPSEEK_API_KEY:
 
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-chat")
-STORAGE_PATH = os.getenv("STORAGE_PATH", "/data/lightrag")
+STORAGE_PATH = os.getenv("STORAGE_PATH", "/opt/yuyutian/WikiService/data")
 
 print(f"STORAGE_PATH: {STORAGE_PATH}", file=sys.stderr)
 
@@ -1009,6 +1031,5 @@ def delete_chunk(chunk_id):
 
 
 if __name__ == '__main__':
-    port = int(os.getenv("PORT", 8080))
-    print(f"Starting WikiService on port {port}", file=sys.stderr)
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    print(f"Starting WikiService on port {PORT}", file=sys.stderr)
+    app.run(host='0.0.0.0', port=PORT, debug=False, threaded=True)

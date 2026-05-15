@@ -42,7 +42,7 @@
         .sidebar-footer { margin-top: auto; padding-top: 24px; border-top: 1px solid var(--border); }
 
         /* Main Content */
-        .main { flex: 1; margin-left: var(--sidebar-width); padding: 32px; min-height: 100vh; position: relative; }
+        .main { flex: 1; margin-left: var(--sidebar-width); padding: 32px; min-height: 100vh; position: relative; overflow-x: auto; }
 
         /* Top Bar */
         .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
@@ -166,7 +166,7 @@
         .source-body-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
         /* Graph */
-        .graph-container { height: 480px; background: var(--bg-dark); border-radius: 8px; position: relative; overflow: hidden; }
+        .graph-container { height: 480px; background: var(--bg-dark); border-radius: 8px; position: relative; overflow: hidden; min-width: 0; }
         #graph-canvas { width: 100%; height: 100%; }
         .graph-controls { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; z-index: 10; }
         .graph-controls .btn { padding: 6px 10px; font-size: 12px; }
@@ -1533,15 +1533,17 @@
                 svgEl.setAttribute('id', 'graph-svg');
                 svgEl.setAttribute('width', W);
                 svgEl.setAttribute('height', H);
+                svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
                 svgEl.setAttribute('overflow', 'hidden');
-                svgEl.style.cssText = 'display:block;overflow:hidden;width:' + W + 'px;height:' + H + 'px;';
+                svgEl.style.cssText = 'display:block;overflow:hidden;width:100%;height:' + H + 'px;max-width:100%;';
                 container.appendChild(svgEl);
             } else {
                 svgEl.innerHTML = '';
                 svgEl.setAttribute('width', W);
                 svgEl.setAttribute('height', H);
+                svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
                 svgEl.setAttribute('overflow', 'hidden');
-                svgEl.style.cssText = 'display:block;overflow:hidden;width:' + W + 'px;height:' + H + 'px;';
+                svgEl.style.cssText = 'display:block;overflow:hidden;width:100%;height:' + H + 'px;max-width:100%;';
             }
 
             fetch("/api/graph").then(r => r.json()).then(data => {
@@ -1690,16 +1692,11 @@
                 const tipMeta = document.getElementById('tip-meta');
 
                 // Block D3 zoom from intercepting node clicks so the node's own
-                // click handler can fire without being blocked by the zoom filter.
-                // stopImmediatePropagation stops the event from reaching D3 zoom's
-                // SVG-level listeners (which run in the bubble phase after node handlers).
+                // Block D3 zoom from intercepting node clicks.
+                // mousedown: prevent D3 zoom's drag from claiming the event.
                 node.on('mousedown', (event) => {
-                    event.stopImmediatePropagation();
+                    event.stopPropagation();
                     _graphNodeClickActive = true;
-                });
-                node.on('click', (event) => {
-                    event.stopImmediatePropagation();
-                    _graphNodeClickActive = false;
                 });
 
                 node.on('mouseover', (event, d) => {
@@ -1800,6 +1797,8 @@
                 // Node click — select and highlight connections
                 node.on('click', (event, d) => {
                     event.stopPropagation();
+                    // Clear flag AFTER D3 zoom's internal click filter runs (via rAF)
+                    requestAnimationFrame(() => { _graphNodeClickActive = false; });
 
                     if (graphSelectedId === d.id) {
                         // Deselect
