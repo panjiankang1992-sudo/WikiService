@@ -235,6 +235,14 @@
         .doc-badge.dir, .doc-badge.file { background: rgba(243,156,18,0.2); color: #f39c12; }
         .doc-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
         .doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+        .doc-reason { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.7; margin-top: 2px; }
+
+        /* 智能问答 - 分类文档展示 */
+        .doc-category-list { margin-top: 20px; }
+        .doc-category-header { padding: 0 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+        .doc-category-section { margin-top: 12px; }
+        .doc-category-title { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+        .doc-category-items { display: flex; flex-direction: column; gap: 6px; }
 
         /* Chunks List */
         .chunks-list { max-height: 600px; overflow-y: auto; }
@@ -1320,55 +1328,92 @@
         }
 
         // Query
+        // 当前查询结果的文档数据（用于点击查看详情）
+        let _currentDocs = [];
+
         function query() {
             const question = document.getElementById('question-input').value.trim();
             const mode = document.getElementById('mode-select').value;
             const btn = document.getElementById('query-btn');
             if (!question) { showResult('query-result', 'error', '请输入问题'); return; }
             btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 思考中...';
+            _currentDocs = [];
             fetch("/api/query", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question, mode})})
                 .then(r=>r.json()).then(d=>{
                     if (d.error) { showResult('query-result', 'error', d.error); }
                     else {
                         let html = `<div class="answer-box">${d.answer}</div>`;
-                        if (d.sources && d.sources.length > 0) {
-                            const badge = (src) => {
-                                if (src.startsWith('manual')) return 'manual';
-                                if (src.startsWith('url')) return 'url';
-                                if (src.startsWith('github')) return 'github';
-                                if (src.startsWith('minimax')) return 'minimax';
-                                if (src.startsWith('dir')) return 'dir';
-                                if (src.startsWith('file')) return 'file';
-                                return 'manual';
-                            };
-                            const badgeName = (src) => {
-                                if (src.startsWith('manual')) return '手动输入';
-                                if (src.startsWith('url')) return '网页';
-                                if (src.startsWith('github')) return 'GitHub';
-                                if (src.startsWith('minimax')) return 'MiniMax';
-                                if (src.startsWith('dir')) return '目录';
-                                if (src.startsWith('file')) return '文件';
-                                return '其他';
-                            };
-                            const name = (src) => {
-                                const parts = src.split(':');
-                                return parts.length > 1 ? parts[1] : src;
-                            };
-                            html += `<div class="source-list">`;
-                            html += `<div class="source-list-header">`;
-                            html += `<strong style="font-size:13px;color:var(--text-secondary);">📄 参考来源</strong>`;
-                            html += `<span style="font-size:11px;color:var(--text-secondary);">点击查看详情（共 ${d.sources.length} 条）</span>`;
+
+                        const docs = d.documents || {};
+                        const high = docs.high || [];
+                        const medium = docs.medium || [];
+                        const low = docs.low || [];
+
+                        if (high.length || medium.length || low.length) {
+                            html += `<div class="doc-category-list">`;
+                            html += `<div class="doc-category-header">`;
+                            html += `<span style="font-size:12px;color:var(--text-secondary);">共找到 ${d.total_matched} 个相关文档（${high.length} 个推荐 · ${medium.length} 个可能相关 · ${low.length} 个低相关）</span>`;
                             html += `</div>`;
-                            d.sources.forEach((s, i) => {
-                                html += renderDocItem(s, {onclick: `openSourceModal(${i})`});
-                            });
+                            if (high.length) {
+                                html += renderDocCategory('推荐文档', 'high', high, 0);
+                            }
+                            if (medium.length) {
+                                html += renderDocCategory('可能相关', 'medium', medium, high.length);
+                            }
+                            if (low.length) {
+                                html += renderDocCategory('其他文档', 'low', low, high.length + medium.length);
+                            }
                             html += `</div>`;
-                            currentSources = d.sources;
+
+                            // 扁平化存到 currentSources（用于 openSourceModal）
+                            _currentDocs = [...high, ...medium, ...low];
+                            currentSources = _currentDocs;
                         }
+
                         document.getElementById('query-result').innerHTML = html;
                     }
                 }).catch(e=>showResult('query-result', 'error', e.message))
                 .finally(()=>{ btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-line"></i> 查询'; });
+        }
+
+        // 渲染一个分类区块（标题 + doc-item 列表）
+        // startIdx: 该分类在全局 _currentDocs 数组中的起始索引
+        function renderDocCategory(label, rel, items, startIdx) {
+            const relColors = {high: 'var(--primary)', medium: '#f39c12', low: 'var(--text-secondary)'};
+            const color = relColors[rel] || 'var(--text-secondary)';
+            const iconMap = {high: 'ri-star-line', medium: 'ri-error-warning-line', low: 'ri-close-circle-line'};
+            let html = `<div class="doc-category-section">`;
+            html += `<div class="doc-category-title" style="border-left: 3px solid ${color};">`;
+            html += `<i class="${iconMap[rel]}" style="color:${color};font-size:14px;"></i>`;
+            html += `<span style="color:${color};font-weight:600;font-size:13px;">${label}</span>`;
+            html += `<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">${items.length} 个</span>`;
+            html += `</div>`;
+            html += `<div class="doc-category-items">`;
+            items.forEach((doc, i) => {
+                const badgeClass = doc.source_type || 'manual';
+                const iconClass = doc.icon || 'ri-file-text-line';
+                const reason = doc.reason || '';
+                const globalIdx = startIdx + i;
+                html += `<div class="doc-item" onclick="openDocModal(${globalIdx})" title="${reason}">
+                    <i class="doc-icon ${badgeClass} ${iconClass}"></i>
+                    <div class="doc-info">
+                        <div class="doc-name" title="${escapeHtml(doc.title)}">${doc.title}</div>
+                        ${doc.sub ? `<div class="doc-path" title="${escapeHtml(doc.sub)}">${doc.sub}</div>` : ''}
+                        ${reason ? `<div class="doc-reason" title="${escapeHtml(reason)}">💡 ${reason}</div>` : ''}
+                    </div>
+                    <div class="doc-meta">
+                        <span class="doc-badge ${badgeClass}">${doc.badge}</span>
+                    </div>
+                </div>`;
+            });
+            html += `</div></div>`;
+            return html;
+        }
+
+        // 打开文档详情弹窗（globalIdx 是 _currentDocs 中的全局索引）
+        function openDocModal(globalIdx) {
+            if (globalIdx < 0 || globalIdx >= _currentDocs.length) return;
+            openSourceModal(globalIdx);
         }
 
         // Toggle source item expand/collapse

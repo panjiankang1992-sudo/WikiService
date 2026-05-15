@@ -594,9 +594,273 @@ def ingest_file():
         return jsonify({"error": str(e)}), 500
 
 
+# ============================================================
+# 语义搜索模块：Embedding + 文档聚合 + LLM 评分
+# ============================================================
+
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "deepseek-embeddings")
+
+
+def get_embedding(text: str) -> list:
+    """调用 DeepSeek Embedding API 获取文本向量"""
+    import httpx
+    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+    payload = {"model": EMBEDDING_MODEL, "input": text[:8000]}
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.post(f"{DEEPSEEK_BASE_URL}/embeddings", headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
+
+
+def cosine_similarity(a: list, b: list) -> float:
+    """计算两个向量的余弦相似度"""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    return dot / (norm_a * norm_b + 1e-9)
+
+
+def compute_all_embeddings(chunks: list) -> dict:
+    """批量计算所有 chunks 的 embedding，结果缓存到文件"""
+    emb_file = os.path.join(STORAGE_PATH, "embeddings.json")
+    cached = {}
+    if os.path.exists(emb_file):
+        try:
+            with open(emb_file, 'r', encoding='utf-8') as f:
+                cached = json.load(f)
+        except Exception:
+            cached = {}
+
+    def text_hash(t):
+        return hashlib.md5(t.encode('utf-8', errors='replace')).hexdigest()[:12]
+
+    chunks_needing_emb = []
+    for chunk in chunks:
+        cid = chunk['id']
+        h = text_hash(chunk['text'])
+        if cid not in cached or cached[cid].get('_hash') != h:
+            chunks_needing_emb.append(chunk)
+
+    if chunks_needing_emb:
+        logger.info(f"需要计算 {len(chunks_needing_emb)}/{len(chunks)} 个 chunk 的 embedding...")
+        for i, chunk in enumerate(chunks_needing_emb):
+            try:
+                emb = get_embedding(chunk['text'])
+                cached[chunk['id']] = {"vec": emb, "_hash": text_hash(chunk['text'])}
+                if (i + 1) % 10 == 0:
+                    logger.info(f"  embedding 进度: {i+1}/{len(chunks_needing_emb)}")
+            except Exception as e:
+                logger.warning(f"  embedding 失败 {chunk['id']}: {e}")
+
+        with open(emb_file, 'w', encoding='utf-8') as f:
+            json.dump(cached, f, ensure_ascii=False)
+        logger.info(f"embedding 已缓存到 {emb_file}")
+
+    return cached
+
+
+def get_doc_id(chunk: dict) -> str:
+    """根据 chunk 来源生成文档 ID，实现文档聚合"""
+    src = chunk.get('source', '')
+    meta = chunk.get('metadata', {}) or {}
+    src_type = src.split(':')[0]
+
+    if src_type == 'dir':
+        rel = meta.get('relative_path', '')
+        directory = meta.get('directory', '')
+        return f"dir:{directory}:{rel}"
+    elif src_type == 'url':
+        return f"url:{src.replace('url:', '')}"
+    elif src_type == 'github':
+        parts = src.split(':')
+        return f"github:{':'.join(parts[1:])}"
+    elif src_type == 'minimax':
+        parts = src.split(':')
+        return f"minimax:{':'.join(parts[1:])}"
+    elif src_type == 'manual':
+        return f"manual:{chunk.get('id', '')}"
+    else:
+        return f"other:{src}"
+
+
+def get_doc_info(chunk: dict) -> dict:
+    """从 chunk 构建文档信息"""
+    src = chunk.get('source', '')
+    src_type = src.split(':')[0]
+    meta = chunk.get('metadata', {}) or {}
+    text = chunk.get('text', '')
+
+    # 提取第一个 markdown 标题
+    m = re.search(r'^#{1,6}\s+(.+)$', text, re.MULTILINE)
+    doc_title = m.group(1).strip()[:80] if m else ''
+
+    badge_map = {'manual': '手动输入', 'dir': '目录', 'url': '网页',
+                 'github': 'GitHub', 'minimax': 'MiniMax', 'file': '文件'}
+    icon_map = {'manual': 'ri-edit-line', 'dir': 'ri-folder-line', 'url': 'ri-global-line',
+                'github': 'ri-github-line', 'minimax': 'ri-robot-line', 'file': 'ri-file-text-line'}
+
+    title = doc_title
+    sub = ''
+
+    if src_type == 'dir':
+        rel = meta.get('relative_path', '')
+        title = f"文件:{rel}" if rel else (doc_title or '目录文件')
+        sub = meta.get('directory', '')
+    elif src_type == 'url':
+        title = doc_title or meta.get('title', '') or src.replace('url:', '')
+        domain = src.replace('url:', '').replace('https://', '').replace('http://', '').split('/')[0]
+        sub = domain
+    elif src_type == 'github':
+        path = ':'.join(src.split(':')[2:])
+        file_name = path.split('/')[-1] if path else ''
+        title = doc_title or meta.get('title', '') or file_name or 'GitHub 文档'
+    elif src_type == 'minimax':
+        name = ':'.join(src.split(':')[1:])
+        title = doc_title or meta.get('title', '') or name
+    elif src_type == 'manual':
+        title = doc_title or '手动输入'
+
+    return {
+        "id": get_doc_id(chunk),
+        "title": title,
+        "sub": sub,
+        "source": src,
+        "source_type": src_type,
+        "badge": badge_map.get(src_type, '其他'),
+        "icon": icon_map.get(src_type, 'ri-file-text-line'),
+        "metadata": meta,
+        "text": text,
+        "chunk_id": chunk.get('id', ''),
+        "created_at": chunk.get('created_at', '')
+    }
+
+
+def semantic_search(query: str, chunks: list, embeddings: dict, top_k: int = 20) -> list:
+    """语义向量搜索：返回 top_k 最相似的 (score, chunk)"""
+    try:
+        q_emb = get_embedding(query)
+    except Exception as e:
+        logger.warning(f"embedding 查询失败，降级为关键词搜索: {e}")
+        return []
+
+    scored = []
+    for chunk in chunks:
+        emb_data = embeddings.get(chunk['id'])
+        if emb_data and 'vec' in emb_data:
+            sim = cosine_similarity(q_emb, emb_data['vec'])
+            scored.append((sim, chunk))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[:top_k]
+
+
+def keyword_search(query: str, chunks: list, top_k: int = 20) -> list:
+    """关键词 fallback 搜索"""
+    q_lower = query.lower()
+    en_words = re.findall(r'[a-zA-Z]{2,}', q_lower)
+    cn_phrases = re.findall(r'[一-鿿]{2,}', query)
+
+    def extract_cn_bigrams(text):
+        result = []
+        i = 0
+        while i < len(text) - 1:
+            c1, c2 = text[i], text[i + 1]
+            if '一' <= c1 <= '鿿' and '一' <= c2 <= '鿿':
+                result.append(c1 + c2)
+                i += 1
+            else:
+                i += 1
+        return result
+
+    q_bigrams = extract_cn_bigrams(query)
+    scored = []
+    for chunk in chunks:
+        text_lower = chunk['text'].lower()
+        chunk_bigrams = extract_cn_bigrams(chunk['text'])
+        score = 0
+        for kw in en_words:
+            if kw in text_lower:
+                score += 2
+        matched_bigrams = set(q_bigrams) & set(chunk_bigrams)
+        score += len(matched_bigrams) * 3
+        for phrase in cn_phrases:
+            if phrase in chunk['text']:
+                score += 5
+        if score > 0:
+            scored.append((score, chunk))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[:top_k]
+
+
+def llm_score_documents(query: str, docs: list) -> list:
+    """调用 LLM 对文档进行相关度评分和分类"""
+    if not docs:
+        return []
+
+    import httpx
+
+    doc_entries = []
+    for i, doc in enumerate(docs):
+        preview = doc['text'][:600].replace('\n', ' ').strip()
+        doc_entries.append(
+            f"文档{i+1}: {doc['title']}\n"
+            f"  来源: {doc['source']}\n"
+            f"  内容摘要: {preview}..."
+        )
+
+    docs_text = "\n\n".join(doc_entries)
+
+    scoring_prompt = f"""你是一个知识库助手。用户正在搜索：**{query}**
+
+以下是知识库中与搜索相关的文档，请判断每篇与用户搜索意图的相关程度，并给出简要理由。
+
+{docs_text}
+
+请严格按以下 JSON 格式返回（只返回 JSON，不要有任何其他文字）：
+[
+  {{"index": 1, "relevance": "high", "reason": "为什么高度相关"}},
+  {{"index": 2, "relevance": "medium", "reason": "为什么可能相关"}}
+]"""
+
+    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+    messages = [
+        {"role": "system", "content": "你是一个严格的知识库评分助手。只返回 JSON 数组，不要有任何其他文字。"},
+        {"role": "user", "content": scoring_prompt}
+    ]
+    payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.3}
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+
+        import json as json_lib
+        m = re.search(r'\[\s*\{[\s\S]*\}\s*\]', content)
+        if m:
+            scores = json_lib.loads(m.group())
+            score_map = {s['index']: s for s in scores}
+            for doc in docs:
+                info = score_map.get(doc['_idx'], {})
+                doc['relevance'] = info.get('relevance', 'low')
+                doc['reason'] = info.get('reason', '未能判断')
+        else:
+            for doc in docs:
+                doc['relevance'] = 'low'
+                doc['reason'] = 'LLM 未能评分'
+    except Exception as e:
+        logger.warning(f"LLM 评分失败: {e}")
+        for doc in docs:
+            doc['relevance'] = 'medium'
+            doc['reason'] = '评分服务暂时不可用'
+
+    return docs
+
+
 @app.route('/api/query', methods=['POST'])
 def query():
-    """Query the knowledge base"""
+    """语义搜索 + LLM 评分：返回分类后的推荐文档"""
     data = request.json
     question = data.get('question', '')
     mode = data.get('mode', 'hybrid')
@@ -609,113 +873,96 @@ def query():
         if not os.path.exists(chunks_file):
             return jsonify({
                 "question": question,
-                "answer": "No data in knowledge base yet. Please add some knowledge first.",
-                "mode": mode
+                "answer": "知识库还没有数据，请先添加知识。",
+                "documents": {"high": [], "medium": [], "low": []}
             })
 
         with open(chunks_file, 'r', encoding='utf-8') as f:
             chunks = json.load(f)
 
-        # Find relevant chunks
-        question_lower = question.lower()
-        best_chunks = []
-
-        # Extract English keywords
-        en_words = re.findall(r'[a-zA-Z]{2,}', question_lower)
-
-        # Extract Chinese keywords via character bigrams (more reliable than greedy regex)
-        def extract_cn_bigrams(text):
-            result = []
-            i = 0
-            while i < len(text) - 1:
-                c1, c2 = text[i], text[i + 1]
-                if '一' <= c1 <= '鿿' and '一' <= c2 <= '鿿':
-                    result.append(c1 + c2)
-                    i += 1
-                else:
-                    i += 1
-            return result
-
-        question_bigrams = extract_cn_bigrams(question)
-
-        for chunk in chunks:
-            text_lower = chunk['text'].lower()
-            text_en = re.findall(r'[a-zA-Z]{2,}', text_lower)
-            chunk_bigrams = extract_cn_bigrams(chunk['text'])
-
-            score = 0
-            # English match
-            for kw in en_words:
-                if kw in text_lower:
-                    score += 2
-
-            # Chinese bigram match
-            matched_bigrams = set(question_bigrams) & set(chunk_bigrams)
-            score += len(matched_bigrams) * 3
-
-            # Also check long Chinese phrases as substrings (2-char+)
-            cn_phrases = re.findall(r'[一-鿿]{2,}', question)
-            for phrase in cn_phrases:
-                if phrase in chunk['text']:
-                    score += 5
-
-            if score > 0:
-                best_chunks.append((score, chunk))
-
-        best_chunks.sort(key=lambda x: x[0], reverse=True)
-
-        if not best_chunks and chunks:
-            relevant_texts = [c['text'] for c in chunks[:3]]
-        else:
-            relevant_texts = [c[1]['text'] for c in best_chunks[:3]]
-
-        if not relevant_texts:
+        if not chunks:
             return jsonify({
                 "question": question,
-                "answer": "No relevant information found. Try different keywords.",
-                "mode": mode
+                "answer": "知识库为空。",
+                "documents": {"high": [], "medium": [], "low": []}
             })
 
-        # Call DeepSeek
-        import httpx
-        context = "\n\n".join(relevant_texts)
-        prompt = f"""Based on the following context, answer the question. If the answer is not in the context, say you don't know.
+        # 1. 计算 embedding（如尚未缓存）
+        embeddings = compute_all_embeddings(chunks)
 
-Context:
-{context}
+        # 2. 语义搜索
+        semantic_results = semantic_search(question, chunks, embeddings, top_k=30)
 
-Question: {question}
+        # 3. 无语义结果时降级为关键词搜索
+        if not semantic_results:
+            logger.info("语义搜索无结果，降级为关键词搜索")
+            semantic_results = keyword_search(question, chunks, top_k=30)
 
-Answer:"""
+        # 4. 按文档聚合
+        doc_map = {}
+        for sim_score, chunk in semantic_results:
+            did = get_doc_id(chunk)
+            if did not in doc_map:
+                doc_map[did] = get_doc_info(chunk)
+                doc_map[did]['_idx'] = len(doc_map)
+                doc_map[did]['_top_score'] = sim_score
+            if sim_score > doc_map[did]['_top_score']:
+                doc_map[did]['_top_score'] = sim_score
 
-        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant. Answer based on the provided context."},
-            {"role": "user", "content": prompt}
-        ]
-        payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.7}
+        doc_list = list(doc_map.values())
 
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
-            response.raise_for_status()
-            answer = response.json()["choices"][0]["message"]["content"]
+        # 5. LLM 评分
+        if doc_list:
+            doc_list = llm_score_documents(question, doc_list)
 
-        # Get sources with metadata
-        sources = []
-        for c in best_chunks[:3]:
-            source_info = {
-                "text": c[1]['text'][:200] + "...",
-                "source": c[1]['source'],
-                "metadata": c[1].get('metadata', {})
-            }
-            sources.append(source_info)
+        # 6. 按 high / medium / low 分类
+        categorized = {"high": [], "medium": [], "low": []}
+        for doc in doc_list:
+            rel = doc.get('relevance', 'low')
+            if rel == 'high':
+                categorized["high"].append(doc)
+            elif rel == 'medium':
+                categorized["medium"].append(doc)
+            else:
+                categorized["low"].append(doc)
+
+        # 7. AI 总结
+        top_docs = categorized["high"][:3] if categorized["high"] else (categorized["medium"][:2] if categorized["medium"] else [])
+        context_texts = [d['text'][:800] for d in top_docs]
+
+        if context_texts:
+            import httpx
+            summary_prompt = f"""用户搜索：**{question}**
+
+基于知识库中匹配的文档，请给出简要总结，说明找到的相关内容是什么。
+
+匹配文档摘要：
+{chr(10).join(f"- {t}" for t in context_texts)}
+
+请用 1-2 句话总结，直接说明知识库中有什么相关资料。"""
+
+            headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+            messages = [
+                {"role": "system", "content": "你是知识库助手，简明扼要回答。"},
+                {"role": "user", "content": summary_prompt}
+            ]
+            payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.5}
+            with httpx.Client(timeout=60.0) as client:
+                resp = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
+                resp.raise_for_status()
+                summary = resp.json()["choices"][0]["message"]["content"]
+        else:
+            summary = "未找到与搜索意图相关的文档，请尝试其他关键词。"
+
+        total_docs = len(categorized["high"]) + len(categorized["medium"]) + len(categorized["low"])
 
         return jsonify({
             "question": question,
-            "answer": answer,
-            "mode": mode,
-            "sources": sources,
-            "chunks_matched": len(best_chunks)
+            "answer": summary,
+            "documents": categorized,
+            "total_matched": total_docs,
+            "chunks_searched": len(semantic_results),
+            "search_mode": "semantic" if semantic_results else "keyword"
         })
 
     except Exception as e:
