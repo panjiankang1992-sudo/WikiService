@@ -839,88 +839,12 @@ def keyword_search(query: str, chunks: list, top_k: int = 20) -> list:
     return scored[:top_k]
 
 
-def llm_score_and_summarize(query: str, docs: list) -> tuple:
-    """调用 LLM 同时完成文档评分和 AI 总结（一次调用，减少延迟）"""
-    if not docs:
-        return [], "知识库为空，未找到相关文档。"
-
-    import httpx
-
-    doc_entries = []
-    for i, doc in enumerate(docs):
-        preview = doc['text'][:500].replace('\n', ' ').strip()
-        doc_entries.append(
-            f"文档{i+1}: {doc['title']}\n"
-            f"  来源: {doc['source']}\n"
-            f"  内容摘要: {preview}..."
-        )
-
-    docs_text = "\n\n".join(doc_entries)
-
-    # 合并评分 + 总结为一个 JSON 响应
-    combined_prompt = f"""你是一个知识库助手。用户正在搜索：**{query}**
-
-以下是知识库中与搜索相关的文档，请完成两项任务：
-
-1. 判断每篇与用户搜索意图的相关程度
-2. 基于高度相关的文档给出简要总结
-
-{docs_text}
-
-请严格按以下 JSON 格式返回（只返回 JSON，不要有任何其他文字）：
-{{
-  "scores": [
-    {{"index": 1, "relevance": "high", "reason": "为什么高度相关"}},
-    {{"index": 2, "relevance": "medium", "reason": "为什么可能相关"}}
-  ],
-  "summary": "基于高度相关文档的 1-2 句话总结"
-}}"""
-
-    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
-    messages = [
-        {"role": "system", "content": "你是一个严格的知识库评分助手。只返回 JSON，不要有任何其他文字。"},
-        {"role": "user", "content": combined_prompt}
-    ]
-    payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.3}
-
-    try:
-        with httpx.Client(timeout=90.0) as client:
-            resp = client.post(f"{DEEPSEEK_BASE_URL}/chat/completions", headers=headers, json=payload)
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"]
-
-        import json as json_lib
-        # 提取 JSON 对象
-        m = re.search(r'\{[\s\S]*\}', content)
-        if m:
-            result = json_lib.loads(m.group())
-            scores = result.get("scores", [])
-            summary = result.get("summary", "")
-            score_map = {s['index']: s for s in scores}
-            for doc in docs:
-                info = score_map.get(doc['_idx'], {})
-                doc['relevance'] = info.get('relevance', 'low')
-                doc['reason'] = info.get('reason', '未能判断')
-            return docs, summary or "未生成总结"
-        else:
-            for doc in docs:
-                doc['relevance'] = 'low'
-                doc['reason'] = 'LLM 未能评分'
-            return docs, "LLM 响应格式异常"
-    except Exception as e:
-        logger.warning(f"LLM 评分+总结失败: {e}")
-        for doc in docs:
-            doc['relevance'] = 'medium'
-            doc['reason'] = '评分服务暂时不可用'
-        return docs, "评分服务暂时不可用，请稍后重试。"
-
 
 @app.route('/api/query', methods=['POST'])
 def query():
-    """语义搜索 + LLM 评分+总结：返回分类后的推荐文档"""
+    """关键词搜索（无外部 API 调用，毫秒级响应）"""
     data = request.json
     question = data.get('question', '')
-    mode = data.get('mode', 'hybrid')
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
@@ -928,72 +852,47 @@ def query():
     try:
         chunks_file = os.path.join(STORAGE_PATH, "text_chunks.json")
         if not os.path.exists(chunks_file):
-            return jsonify({
-                "question": question,
-                "answer": "知识库还没有数据，请先添加知识。",
-                "documents": {"high": [], "medium": [], "low": []}
-            })
+            return jsonify({"documents": {"high": [], "medium": []}})
 
         with open(chunks_file, 'r', encoding='utf-8') as f:
             chunks = json.load(f)
 
         if not chunks:
-            return jsonify({
-                "question": question,
-                "answer": "知识库为空。",
-                "documents": {"high": [], "medium": [], "low": []}
-            })
+            return jsonify({"documents": {"high": [], "medium": []}})
 
-        # 1. 从缓存加载 embedding（无 API 调用）
-        embeddings = compute_all_embeddings(chunks)
+        # 1. 关键词搜索（完全本地，无网络调用）
+        scored = keyword_search(question, chunks, top_k=50)
 
-        # 2. 语义搜索（1 次 API：query embedding）
-        semantic_results = semantic_search(question, chunks, embeddings, top_k=30)
-
-        # 3. 无语义结果时降级为关键词搜索
-        if not semantic_results:
-            logger.info("语义搜索无结果，降级为关键词搜索")
-            semantic_results = keyword_search(question, chunks, top_k=30)
-
-        # 4. 按文档聚合
+        # 2. 按文档聚合，取每文档最高分
         doc_map = {}
-        for sim_score, chunk in semantic_results:
+        for kw_score, chunk in scored:
             did = get_doc_id(chunk)
             if did not in doc_map:
                 doc_map[did] = get_doc_info(chunk)
-                doc_map[did]['_idx'] = len(doc_map)
-                doc_map[did]['_top_score'] = sim_score
-            if sim_score > doc_map[did]['_top_score']:
-                doc_map[did]['_top_score'] = sim_score
-
-        doc_list = list(doc_map.values())
-
-        # 5. LLM 评分 + AI 总结（合并为 1 次 API 调用）
-        if doc_list:
-            doc_list, summary = llm_score_and_summarize(question, doc_list)
-        else:
-            summary = "未找到与搜索意图相关的文档，请尝试其他关键词。"
-
-        # 6. 按 high / medium / low 分类
-        categorized = {"high": [], "medium": [], "low": []}
-        for doc in doc_list:
-            rel = doc.get('relevance', 'low')
-            if rel == 'high':
-                categorized["high"].append(doc)
-            elif rel == 'medium':
-                categorized["medium"].append(doc)
+                doc_map[did]['_score'] = kw_score
             else:
-                categorized["low"].append(doc)
+                doc_map[did]['_score'] = max(doc_map[did]['_score'], kw_score)
 
-        total_docs = len(categorized["high"]) + len(categorized["medium"]) + len(categorized["low"])
+        # 3. 用关键词得分直接分类（无 LLM）
+        # high: score >= 15（强相关）  medium: score >= 5（部分相关）
+        categorized = {"high": [], "medium": []}
+        for doc in doc_map.values():
+            score = doc['_score']
+            if score >= 15:
+                categorized["high"].append(doc)
+            elif score >= 5:
+                categorized["medium"].append(doc)
+            # < 5 分的跳过（低相关，不展示）
+
+        # 清理内部字段
+        for lst in categorized.values():
+            for doc in lst:
+                doc.pop('_score', None)
+                doc.pop('_idx', None)
 
         return jsonify({
-            "question": question,
-            "answer": summary,
             "documents": categorized,
-            "total_matched": total_docs,
-            "chunks_searched": len(semantic_results),
-            "search_mode": "semantic" if semantic_results else "keyword"
+            "chunks_searched": len(scored)
         })
 
     except Exception as e:

@@ -484,14 +484,6 @@
                 </div>
                 <div class="card-body">
                     <div class="form-group">
-                        <label>选择模式</label>
-                        <select class="form-control" id="mode-select" style="max-width:200px;">
-                            <option value="hybrid">混合模式</option>
-                            <option value="local">局部模式</option>
-                            <option value="global">全局模式</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
                         <textarea class="form-control" id="question-input" placeholder="请输入您的问题..." style="min-height:100px;"></textarea>
                     </div>
                     <button class="btn btn-primary" id="query-btn" onclick="query()">
@@ -1333,26 +1325,24 @@
 
         function query() {
             const question = document.getElementById('question-input').value.trim();
-            const mode = document.getElementById('mode-select').value;
             const btn = document.getElementById('query-btn');
             if (!question) { showResult('query-result', 'error', '请输入问题'); return; }
-            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 思考中...';
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 搜索中...';
             _currentDocs = [];
-            fetch("/api/query", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question, mode})})
+            fetch("/api/query", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question})})
                 .then(r=>r.json()).then(d=>{
                     if (d.error) { showResult('query-result', 'error', d.error); }
                     else {
-                        let html = `<div class="answer-box">${d.answer}</div>`;
-
                         const docs = d.documents || {};
                         const high = docs.high || [];
                         const medium = docs.medium || [];
-                        const low = docs.low || [];
+                        const total = high.length + medium.length;
 
-                        if (high.length || medium.length || low.length) {
-                            html += `<div class="doc-category-list">`;
+                        let html = '';
+                        if (total > 0) {
+                            html = `<div class="doc-category-list">`;
                             html += `<div class="doc-category-header">`;
-                            html += `<span style="font-size:12px;color:var(--text-secondary);">共找到 ${d.total_matched} 个相关文档（${high.length} 个推荐 · ${medium.length} 个可能相关 · ${low.length} 个低相关）</span>`;
+                            html += `<span style="font-size:12px;color:var(--text-secondary);">找到 ${total} 个相关文档</span>`;
                             html += `</div>`;
                             if (high.length) {
                                 html += renderDocCategory('推荐文档', 'high', high, 0);
@@ -1360,14 +1350,11 @@
                             if (medium.length) {
                                 html += renderDocCategory('可能相关', 'medium', medium, high.length);
                             }
-                            if (low.length) {
-                                html += renderDocCategory('其他文档', 'low', low, high.length + medium.length);
-                            }
                             html += `</div>`;
-
-                            // 扁平化存到 currentSources（用于 openSourceModal）
-                            _currentDocs = [...high, ...medium, ...low];
+                            _currentDocs = [...high, ...medium];
                             currentSources = _currentDocs;
+                        } else {
+                            html = `<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:14px;">未找到相关文档，请尝试其他关键词。</div>`;
                         }
 
                         document.getElementById('query-result').innerHTML = html;
@@ -1376,12 +1363,10 @@
                 .finally(()=>{ btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-line"></i> 查询'; });
         }
 
-        // 渲染一个分类区块（标题 + doc-item 列表）
-        // startIdx: 该分类在全局 _currentDocs 数组中的起始索引
         function renderDocCategory(label, rel, items, startIdx) {
-            const relColors = {high: 'var(--primary)', medium: '#f39c12', low: 'var(--text-secondary)'};
+            const relColors = {high: 'var(--primary)', medium: '#f39c12'};
             const color = relColors[rel] || 'var(--text-secondary)';
-            const iconMap = {high: 'ri-star-line', medium: 'ri-error-warning-line', low: 'ri-close-circle-line'};
+            const iconMap = {high: 'ri-star-line', medium: 'ri-error-warning-line'};
             let html = `<div class="doc-category-section">`;
             html += `<div class="doc-category-title" style="border-left: 3px solid ${color};">`;
             html += `<i class="${iconMap[rel]}" style="color:${color};font-size:14px;"></i>`;
@@ -1392,14 +1377,12 @@
             items.forEach((doc, i) => {
                 const badgeClass = doc.source_type || 'manual';
                 const iconClass = doc.icon || 'ri-file-text-line';
-                const reason = doc.reason || '';
                 const globalIdx = startIdx + i;
-                html += `<div class="doc-item" onclick="openDocModal(${globalIdx})" title="${reason}">
+                html += `<div class="doc-item" onclick="openDocModal(${globalIdx})">
                     <i class="doc-icon ${badgeClass} ${iconClass}"></i>
                     <div class="doc-info">
-                        <div class="doc-name" title="${escapeHtml(doc.title)}">${doc.title}</div>
-                        ${doc.sub ? `<div class="doc-path" title="${escapeHtml(doc.sub)}">${doc.sub}</div>` : ''}
-                        ${reason ? `<div class="doc-reason" title="${escapeHtml(reason)}">💡 ${reason}</div>` : ''}
+                        <div class="doc-name">${escapeHtml(doc.title)}</div>
+                        ${doc.sub ? `<div class="doc-path">${escapeHtml(doc.sub)}</div>` : ''}
                     </div>
                     <div class="doc-meta">
                         <span class="doc-badge ${badgeClass}">${doc.badge}</span>
@@ -1410,7 +1393,6 @@
             return html;
         }
 
-        // 打开文档详情弹窗（globalIdx 是 _currentDocs 中的全局索引）
         function openDocModal(globalIdx) {
             if (globalIdx < 0 || globalIdx >= _currentDocs.length) return;
             openSourceModal(globalIdx);
