@@ -391,31 +391,39 @@ def ingest_github():
         repo = repo.rstrip('/')
 
         import httpx
+        github_token = os.getenv("GITHUB_TOKEN", "")
         headers = {
-            "User-Agent": "WikiService-KnowledgeBase"
+            "User-Agent": "WikiService-KnowledgeBase",
+            "Accept": "application/vnd.github.v3+json"
         }
+        if github_token:
+            headers["Authorization"] = f"token {github_token}"
 
         results = []
         file_urls = []
 
         # First get the default branch name
         default_branch = "main"  # default fallback
-        with httpx.Client(timeout=30.0, headers=headers) as client:
-            try:
+        try:
+            with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
                 repo_info = client.get(f"https://api.github.com/repos/{owner}/{repo}")
                 if repo_info.status_code == 200:
                     default_branch = repo_info.json().get('default_branch', 'main')
-            except:
-                pass
+                    logger.info(f"GitHub repo {owner}/{repo} default branch: {default_branch}")
+        except Exception as e:
+            logger.warning(f"Failed to get repo info for {owner}/{repo}: {e}")
 
         # Use tree API to get all files recursively
         tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1"
+        logger.info(f"Fetching GitHub tree: {tree_url}")
 
-        with httpx.Client(timeout=30.0, headers=headers) as client:
-            try:
+        try:
+            with httpx.Client(timeout=60.0, headers=headers, follow_redirects=True) as client:
                 response = client.get(tree_url)
+                logger.info(f"Tree API response: {response.status_code}")
                 if response.status_code == 200:
                     tree_data = response.json()
+                    logger.info(f"Tree items: {len(tree_data.get('tree', []))}")
                     for item in tree_data.get('tree', []):
                         if item['type'] == 'blob':
                             path = item['path']
@@ -429,8 +437,8 @@ def ingest_github():
                                     "url": f"https://github.com/{owner}/{repo}/blob/{default_branch}/{path}",
                                     "download_url": raw_url
                                 })
-            except Exception as e:
-                print(f"Tree API error: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"Tree API error: {e}", file=sys.stderr)
 
         # If tree API failed, try contents API
         if not file_urls:
@@ -438,7 +446,7 @@ def ingest_github():
                 nonlocal file_urls
                 api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
                 try:
-                    with httpx.Client(timeout=30.0, headers=headers) as client:
+                    with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
                         response = client.get(api_url)
                         if response.status_code == 200:
                             items = response.json()
@@ -460,42 +468,50 @@ def ingest_github():
                     print(f"Error fetching {path}: {e}", file=sys.stderr)
             fetch_contents()
 
-        # Download and process files via GitHub Contents API (no raw.githubusercontent.com dependency)
+        # Download files: raw URL first (high rate limit), then Contents API fallback
+        # raw.githubusercontent.com has ~10k req/hour vs API's 60 req/hour
         processed = 0
         download_errors = []
-        for item in file_urls[:50]:
+        rate_limited = False
+        for item in file_urls[:200]:
             try:
                 content = None
-                # Try Contents API (returns base64, works from any network)
-                contents_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{item['path']}"
-                with httpx.Client(timeout=30.0, headers=headers) as client:
-                    resp = client.get(contents_url)
+                path = item['path']
+                # Prefer raw URL (much higher rate limit)
+                raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{default_branch}/{path}"
+                with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+                    resp = client.get(raw_url)
                     if resp.status_code == 200:
-                        data = resp.json()
-                        if data.get('encoding') == 'base64' and data.get('content'):
-                            import base64
-                            content = base64.b64decode(data['content']).decode('utf-8', errors='replace')
-                        elif data.get('content'):
-                            content = data['content']
+                        content = resp.text
+                    elif resp.status_code in (403, 404):
+                        # Fall back to Contents API for binary/special files
+                        contents_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+                        resp2 = client.get(contents_url)
+                        if resp2.status_code == 200:
+                            data = resp2.json()
+                            if data.get('encoding') == 'base64' and data.get('content'):
+                                import base64
+                                content = base64.b64decode(data['content']).decode('utf-8', errors='replace')
+                            elif data.get('content'):
+                                content = data['content']
+                        elif resp2.status_code == 403:
+                            rate_limited = True
                 if content and len(content) > 100:
                     metadata = {
                         "type": "github",
                         "repo": f"{owner}/{repo}",
-                        "path": item['path'],
+                        "path": path,
                         "url": item['url']
                     }
                     chunk_id, status = save_chunk(content, f"github:{owner}/{repo}", metadata)
                     results.append({
                         "file": item['name'],
-                        "path": item['path'],
+                        "path": path,
                         "chunk_id": chunk_id,
                         "status": status
                     })
                     processed += 1
-                elif content:
-                    download_errors.append(item['path'])
             except Exception as e:
-                download_errors.append(f"{item['path']}: {e}")
                 print(f"Error processing {item['path']}: {e}", file=sys.stderr)
 
         return jsonify({
@@ -504,6 +520,7 @@ def ingest_github():
             "files_found": len(file_urls),
             "files_processed": processed,
             "files": results[:20],
+            "rate_limited": rate_limited,
             "errors": download_errors[:5] if download_errors else None
         })
 
@@ -913,9 +930,8 @@ def query():
             """
             返回 title 的关键词命中详情：
             - phrase_hit: 完整查询词组是否在 title 中
-            - n_bigrams: query 中非重叠连续字符组的 title 命中数
-              （每 2 个相邻 query 字为 1 组，title 含该 2 字即算命中）
-            - en_hit: EN 词命中（词边界匹配）
+            - n_bigrams: query 中非重叠 bigram 的 title 命中数
+            - en_hit: EN 词命中（词边界，最短3字符）
             """
             cn_chars = re.findall(r'[一-鿿]', q)
             en_words = re.findall(r'[a-zA-Z]{2,}', q.lower())
@@ -924,8 +940,8 @@ def query():
             # 完整词组命中
             phrase_hit = any(doc_title.find(ph) >= 0 for ph in cn_phrases)
 
-            # EN 词命中（词边界匹配，避免 "json" 命中 "tsconfig.json"）
-            en_hit = any(re.search(r'\b' + re.escape(w) + r'\b', doc_title.lower()) for w in en_words)
+            # EN 词命中：词边界 + 最短3字符（避免 "js" 匹配 "labeler.js"）
+            en_hit = any(re.search(r'\b' + re.escape(w) + r'\b', doc_title.lower()) for w in en_words if len(w) >= 3)
 
             # 非重叠 bigram 计数（每 2 相邻字为一组，title 含该 2 字即算命中）
             # 对于 "微服务架构" -> ['微服务', '架构'] -> 2 组
