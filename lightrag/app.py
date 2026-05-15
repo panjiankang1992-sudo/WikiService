@@ -968,11 +968,17 @@ def query():
             n_bigrams = sig['n_bigrams']
 
             # HIGH: 关键词命中（phrase/bigram/en）且 语义 >= 0.50
-            # MEDIUM: 关键词命中（phrase/bigram/en）且 语义 >= 0.30
-            # 无关键词时不依赖纯语义兜底（MEDIUM B 移除 — 0.50-0.55 区间噪声太多）
+            # MEDIUM A: 关键词命中（phrase/bigram/en）且 语义 >= 0.30
+            # MEDIUM B: 极短 EN 查询（≤4 字符，无 en_hit 可能）且文本命中
+            #   仅针对 "PDF" 这类单短词，语义 0.40+ 文本命中即可返回
+            doc_text = doc.get('text', '')
+            text_hit = question.lower() in doc_text.lower()
+            is_ultra_short = len(question.strip()) <= 4 and re.match(r'^[a-zA-Z]+$', question.strip())
             if (phrase_hit or n_bigrams >= 2 or en_hit) and sem_score >= 0.50:
                 doc['_rel'] = 'high'
             elif (phrase_hit or n_bigrams >= 1 or en_hit) and sem_score >= 0.30:
+                doc['_rel'] = 'medium'
+            elif is_ultra_short and sem_score >= 0.40 and text_hit:
                 doc['_rel'] = 'medium'
             else:
                 doc['_rel'] = 'skip'
@@ -981,8 +987,16 @@ def query():
         scored_docs.sort(key=lambda x: (0 if x['_rel'] == 'skip' else 1, -(x['_score'])), reverse=True)
 
         categorized = {"high": [], "medium": []}
+        seen_ids = set()  # 去重：相同 source+title 只保留第一个（最高分）
         for doc in scored_docs:
             rel = doc.pop('_rel')
+            if rel == 'skip':
+                continue
+            # 去重键：source + title
+            dedup_key = doc.get('source', '') + '|' + doc.get('title', '')
+            if dedup_key in seen_ids:
+                continue
+            seen_ids.add(dedup_key)
             if rel == 'high':
                 categorized["high"].append(doc)
             elif rel == 'medium':
