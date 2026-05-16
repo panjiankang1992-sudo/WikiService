@@ -6,7 +6,7 @@ logs/
 .env
 
 # Data directories
-/data/
+**/data/
 *.db
 *.sqlite
 
@@ -31,6 +31,10 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.venv/
+
+# Claude
+.claude/worktrees/
 
 # IDE
 .vscode/

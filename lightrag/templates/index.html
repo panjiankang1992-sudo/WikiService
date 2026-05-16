@@ -13,17 +13,20 @@
             --sidebar-width: 240px;
             --primary: #5b8def;
             --primary-dark: #4a7cd8;
+            --primary-glow: rgba(91,141,239,0.15);
             --bg-dark: #1a1d21;
-            --bg-card: #22262b;
-            --bg-hover: #2a2f36;
-            --text-primary: #ffffff;
-            --text-secondary: #8b9298;
-            --border: #2d3339;
+            --bg-card: #1e2127;
+            --bg-hover: #262a32;
+            --text-primary: #e8eaed;
+            --text-secondary: #9098a0;
+            --border: #2d3239;
             --success: #2ecc71;
             --warning: #f39c12;
             --danger: #e74c3c;
             --radius: 12px;
-            --shadow: 0 4px 20px rgba(0,0,0,0.3);
+            --radius-sm: 8px;
+            --shadow: 0 2px 12px rgba(0,0,0,0.2);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.35);
             --drawer-width: 480px;
         }
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-dark); color: var(--text-primary); min-height: 100vh; display: flex; }
@@ -35,9 +38,9 @@
         .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--primary), #8b5cf6); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: white; }
         .logo-text { font-size: 18px; font-weight: 700; color: var(--text-primary); }
         .logo-sub { font-size: 11px; color: var(--text-secondary); }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius); color: var(--text-secondary); cursor: pointer; transition: all 0.2s; margin-bottom: 4px; font-size: 14px; font-weight: 500; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s ease; margin-bottom: 4px; font-size: 14px; font-weight: 500; }
         .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .nav-item.active { background: var(--primary); color: white; }
+        .nav-item.active { background: linear-gradient(135deg, var(--primary), #7b6cf6); color: white; box-shadow: 0 4px 12px rgba(91,141,239,0.3); }
         .nav-item i { font-size: 20px; width: 24px; text-align: center; }
         .sidebar-footer { margin-top: auto; padding-top: 24px; border-top: 1px solid var(--border); }
 
@@ -53,9 +56,15 @@
         .btn-add:hover { background: var(--primary-dark); transform: translateY(-1px); }
 
         /* Stats Cards */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 32px; }
-        .stat-card { background: var(--bg-card); border-radius: var(--radius); padding: 20px; border: 1px solid var(--border); transition: transform 0.2s, box-shadow 0.2s; }
-        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .stat-card { background: var(--bg-card); border-radius: var(--radius); padding: 20px 24px; border: 1px solid var(--border); transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; position: relative; overflow: hidden; }
+        .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; opacity: 0; transition: opacity 0.3s; }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: rgba(91,141,239,0.3); }
+        .stat-card:hover::before { opacity: 1; }
+        .stat-card:nth-child(1)::before { background: linear-gradient(90deg, var(--primary), #8b5cf6); }
+        .stat-card:nth-child(2)::before { background: linear-gradient(90deg, var(--success), #27ae60); }
+        .stat-card:nth-child(3)::before { background: linear-gradient(90deg, #00bcd4, var(--primary)); }
+        .stat-card:nth-child(4)::before { background: linear-gradient(90deg, #8b5cf6, #ce93d8); }
         .stat-card .icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 12px; }
         .stat-card .icon.blue { background: rgba(91,141,239,0.15); color: var(--primary); }
         .stat-card .icon.green { background: rgba(46,204,113,0.15); color: var(--success); }
@@ -65,11 +74,12 @@
         .stat-card .label { color: var(--text-secondary); font-size: 12px; margin-top: 4px; }
 
         /* Cards */
-        .card { background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 24px; }
-        .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .card { background: var(--bg-card); border-radius: var(--radius); border: 1px solid var(--border); margin-bottom: 24px; box-shadow: var(--shadow); transition: border-color 0.3s; }
+        .card:focus-within { border-color: rgba(91,141,239,0.4); }
+        .card-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
         .card-header h2 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
         .card-header h2 i { color: var(--primary); }
-        .card-body { padding: 20px; }
+        .card-body { padding: 24px; }
 
         /* Content Types Grid */
         .content-types { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
@@ -106,16 +116,16 @@
         /* Form Elements */
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
-        .form-control { width: 100%; padding: 10px 14px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 14px; transition: border-color 0.2s; }
-        .form-control:focus { outline: none; border-color: var(--primary); }
+        .form-control { width: 100%; padding: 12px 16px; background: var(--bg-dark); border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); font-size: 14px; transition: border-color 0.3s, box-shadow 0.3s; }
+        .form-control:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow); }
         .form-control::placeholder { color: var(--text-secondary); opacity: 0.6; }
         textarea.form-control { resize: vertical; min-height: 120px; line-height: 1.6; }
         select.form-control { cursor: pointer; }
 
         /* Buttons */
-        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:hover { background: var(--primary-dark); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s ease; border: none; letter-spacing: 0.3px; }
+        .btn-primary { background: linear-gradient(135deg, var(--primary), #6d7cf2); color: white; box-shadow: 0 2px 8px rgba(91,141,239,0.25); }
+        .btn-primary:hover { background: linear-gradient(135deg, var(--primary-dark), #5c6de0); box-shadow: 0 4px 16px rgba(91,141,239,0.4); transform: translateY(-1px); }
         .btn-secondary { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border); }
         .btn-secondary:hover { border-color: var(--primary); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -215,7 +225,7 @@
         .related-empty { text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px; }
 
         /* === 统一文档条目样式 (doc-item) === */
-        /* 用于: 知识管理 + 智能问答参考来源 + 图谱关联面板 */
+        /* 用于: 知识管理 + 知识查询参考来源 + 图谱关联面板 */
         .doc-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--bg-dark); border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
         .doc-item:hover { border-color: var(--primary); background: rgba(91,141,239,0.06); }
         .doc-icon { font-size: 20px; flex-shrink: 0; color: var(--text-secondary); }
@@ -236,8 +246,9 @@
         .doc-badge.minimax { background: rgba(0,150,199,0.2); color: #00bcd4; }
         .doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
         .doc-reason { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.7; margin-top: 2px; }
+        .doc-summary { font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-top: 4px; opacity: 0.85; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
-        /* 智能问答 - 分类文档展示 */
+        /* 知识查询 - 分类文档展示 */
         .doc-category-list { margin-top: 20px; }
         .doc-category-header { padding: 0 0 10px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
         .doc-category-section { margin-top: 12px; }
@@ -375,7 +386,7 @@
             </div>
             <div class="nav-item" onclick="showPage('query')" data-page="query">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>智能问答</span>
+                <span>知识查询</span>
             </div>
             <div class="nav-item" onclick="showPage('graph')" data-page="graph">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><line x1="12" y1="7" x2="5" y2="10"/><line x1="12" y1="7" x2="19" y2="10"/><line x1="5" y1="14" x2="5" y2="17"/><line x1="19" y1="14" x2="19" y2="17"/><line x1="5" y1="12" x2="12" y2="10"/><line x1="19" y1="12" x2="12" y2="10"/></svg>
@@ -473,9 +484,9 @@
                 <div>
                     <h1 class="page-title">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>
-                        智能问答
+                        知识查询
                     </h1>
-                    <p class="page-subtitle">基于知识库的智能问答系统</p>
+                    <p class="page-subtitle">基于知识库的智能推荐系统</p>
                 </div>
             </div>
             <div class="card">
@@ -1074,7 +1085,7 @@
             return { main: docTitle || meta.title || name || '未命名', sub: '', isDir: false };
         }
 
-        // 统一文档条目渲染函数：用于知识管理、智能问答参考来源、图谱关联面板
+        // 统一文档条目渲染函数：用于知识管理、知识查询参考来源、图谱关联面板
         // c: chunk 对象 (来自 API)
         // opts.onclick: 点击回调函数字符串（可选，默认 openChunkModal）
         // opts.actions: 额外操作按钮 HTML（可选）
@@ -1333,25 +1344,20 @@
                 .then(r=>r.json()).then(d=>{
                     if (d.error) { showResult('query-result', 'error', d.error); }
                     else {
-                        const docs = d.documents || {};
-                        const high = docs.high || [];
-                        const medium = docs.medium || [];
-                        const total = high.length + medium.length;
+                        const docs = d.documents || [];
+                        const total = docs.length;
 
                         let html = '';
                         if (total > 0) {
+                            const highCnt = docs.filter(x => x._rel === 'high').length;
+                            const mediumCnt = total - highCnt;
                             html = `<div class="doc-category-list">`;
                             html += `<div class="doc-category-header">`;
-                            html += `<span style="font-size:12px;color:var(--text-secondary);">找到 ${total} 个相关文档</span>`;
+                            html += `<span style="font-size:12px;color:var(--text-secondary);">找到 ${total} 个相关文档（推荐 ${highCnt} 个 · 可能相关 ${mediumCnt} 个），按综合关联度排序</span>`;
                             html += `</div>`;
-                            if (high.length) {
-                                html += renderDocCategory('推荐文档', 'high', high, 0);
-                            }
-                            if (medium.length) {
-                                html += renderDocCategory('可能相关', 'medium', medium, high.length);
-                            }
+                            html += renderDocList(docs);
                             html += `</div>`;
-                            _currentDocs = [...high, ...medium];
+                            _currentDocs = docs;
                             currentSources = _currentDocs;
                         } else {
                             html = `<div style="text-align:center;padding:40px;color:var(--text-secondary);font-size:14px;">未找到相关文档，请尝试其他关键词。</div>`;
@@ -1363,25 +1369,22 @@
                 .finally(()=>{ btn.disabled = false; btn.innerHTML = '<i class="ri-send-plane-line"></i> 查询'; });
         }
 
-        function renderDocCategory(label, rel, items, startIdx) {
+        function renderDocList(items) {
             const relColors = {high: 'var(--primary)', medium: '#f39c12'};
-            const color = relColors[rel] || 'var(--text-secondary)';
-            const iconMap = {high: 'ri-star-line', medium: 'ri-error-warning-line'};
-            let html = `<div class="doc-category-section">`;
-            html += `<div class="doc-category-title" style="border-left: 3px solid ${color};">`;
-            html += `<i class="${iconMap[rel]}" style="color:${color};font-size:14px;"></i>`;
-            html += `<span style="color:${color};font-weight:600;font-size:13px;">${label}</span>`;
-            html += `<span style="font-size:11px;color:var(--text-secondary);margin-left:6px;">${items.length} 个</span>`;
-            html += `</div>`;
-            html += `<div class="doc-category-items">`;
+            const relLabels = {high: '推荐', medium: '可能相关'};
+            const iconMap = {high: 'ri-star-fill', medium: 'ri-error-warning-line'};
+            let html = `<div class="doc-category-items">`;
             items.forEach((doc, i) => {
+                const rel = doc._rel || 'medium';
+                const color = relColors[rel] || 'var(--text-secondary)';
                 const badgeClass = doc.source_type || 'manual';
                 const iconClass = doc.icon || 'ri-file-text-line';
-                const globalIdx = startIdx + i;
-                html += `<div class="doc-item" onclick="openDocModal(${globalIdx})">
+                html += `<div class="doc-item" onclick="openDocModal(${i})">
                     <i class="doc-icon ${badgeClass} ${iconClass}"></i>
                     <div class="doc-info">
                         <div class="doc-name">${escapeHtml(doc.title)}</div>
+                        ${doc._reason ? `<div class="doc-reason"><i class="${iconMap[rel]}" style="color:${color};font-size:10px;"></i> <span style="color:${color};font-weight:500;">${relLabels[rel]}</span> · ${escapeHtml(doc._reason)}</div>` : ''}
+                        ${doc._summary ? `<div class="doc-summary">${escapeHtml(doc._summary)}</div>` : ''}
                         ${doc.sub ? `<div class="doc-path">${escapeHtml(doc.sub)}</div>` : ''}
                     </div>
                     <div class="doc-meta">
@@ -1389,7 +1392,7 @@
                     </div>
                 </div>`;
             });
-            html += `</div></div>`;
+            html += `</div>`;
             return html;
         }
 

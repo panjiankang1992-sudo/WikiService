@@ -959,6 +959,44 @@ def query():
                 'n_bigrams': n_bigrams
             }
 
+        def reason_text(sig: dict, sem: float, text_hit: bool, is_ultra_short: bool, title: str, q: str) -> str:
+            """Generate a concise reason why this doc was recommended"""
+            pct = f"{sem:.0%}"
+            cn_phrases = re.findall(r'[一-鿿]{2,}', q)
+            if sig['phrase_hit']:
+                matched = [ph for ph in cn_phrases if title.find(ph) >= 0]
+                kw = '、'.join(matched[:2])
+                return f"标题匹配「{kw}」，语义相似度 {pct}"
+            if sig['en_hit']:
+                return f"英文关键词匹配，语义相似度 {pct}"
+            if sig['n_bigrams'] >= 2:
+                return f"标题高度相关，语义相似度 {pct}"
+            if sig['n_bigrams'] >= 1:
+                return f"标题部分匹配，语义相似度 {pct}"
+            if text_hit:
+                return f"正文内容匹配「{q}」，语义相似度 {pct}"
+            return f"语义相似度 {pct}"
+
+        def one_sentence(text: str, max_len: int = 100) -> str:
+            """Extract the first meaningful sentence as a summary"""
+            t = text.strip()
+            # Strip markdown headings (# Title) and RST headings (Title\n=====)
+            t = re.sub(r'^#{1,6}\s+[^\n]+\n', '', t)
+            t = re.sub(r'^[^\n]+\n[=\-~^]{3,}\n', '', t)
+            # Strip leading blockquote markers and whitespace
+            t = re.sub(r'^>\s*', '', t.strip())
+            t = t.strip()
+            # Find first sentence ending with 。.!?！？\n
+            m = re.search(r'^(.+?[。.!?！？\n])(?:\s|$)', t, re.DOTALL)
+            if m:
+                s = m.group(1).strip()
+                if len(s) > max_len:
+                    s = s[:max_len] + '...'
+                return s
+            if len(t) > max_len:
+                return t[:max_len] + '...'
+            return t if t else ''
+
         scored_docs = []
         for doc in doc_map.values():
             sem_score = doc['_score']
@@ -967,51 +1005,83 @@ def query():
             en_hit = sig['en_hit']
             n_bigrams = sig['n_bigrams']
 
+            # 关键词匹配强度 (0-1)
+            if phrase_hit:
+                kw_strength = 0.9
+            elif en_hit:
+                kw_strength = 0.8
+            elif n_bigrams >= 3:
+                kw_strength = 0.65
+            elif n_bigrams >= 2:
+                kw_strength = 0.5
+            elif n_bigrams >= 1:
+                kw_strength = 0.3
+            else:
+                kw_strength = 0.0
+
+            doc_text = doc.get('text', '')
+            # 正文命中：精确匹配 或 中文短语命中 或 首 bigram 命中（首词最具区分度）
+            cn_chars = re.findall(r'[一-鿿]', question)
+            cn_phrases = re.findall(r'[一-鿿]{2,}', question)
+            first_bigram = cn_chars[0] + cn_chars[1] if len(cn_chars) >= 2 else ''
+            text_hit = (question.lower() in doc_text.lower()
+                        or any(ph in doc_text for ph in cn_phrases)
+                        or (first_bigram and first_bigram in doc_text))
+            is_ultra_short = len(question.strip()) <= 4 and re.match(r'^[a-zA-Z]+$', question.strip())
+
+            # 正文匹配信号（标题无中文关键词时，正文命中作为弱信号）
+            if kw_strength == 0 and text_hit and not is_ultra_short:
+                kw_strength = 0.15
+
+            # 综合关联度 = 语义相似度(55%) + 关键词匹配强度(45%)
+            doc['_rank'] = round(sem_score * 0.55 + kw_strength * 0.45, 4)
+
             # HIGH: 关键词命中（phrase/bigram/en）且 语义 >= 0.50
             # MEDIUM A: 关键词命中（phrase/bigram/en）且 语义 >= 0.30
-            # MEDIUM B: 极短 EN 查询（≤4 字符，无 en_hit 可能）且文本命中
-            #   仅针对 "PDF" 这类单短词，语义 0.40+ 文本命中即可返回
-            doc_text = doc.get('text', '')
-            text_hit = question.lower() in doc_text.lower()
-            is_ultra_short = len(question.strip()) <= 4 and re.match(r'^[a-zA-Z]+$', question.strip())
+            # MEDIUM B: 极短 EN 查询（≤4 字符）且文本命中
+            # MEDIUM C: 中文查询正文命中但标题无关键词，语义 >= 0.50
             if (phrase_hit or n_bigrams >= 2 or en_hit) and sem_score >= 0.50:
                 doc['_rel'] = 'high'
             elif (phrase_hit or n_bigrams >= 1 or en_hit) and sem_score >= 0.30:
                 doc['_rel'] = 'medium'
             elif is_ultra_short and sem_score >= 0.40 and text_hit:
                 doc['_rel'] = 'medium'
+            elif text_hit and sem_score >= 0.50 and kw_strength == 0.15:
+                doc['_rel'] = 'medium'
             else:
                 doc['_rel'] = 'skip'
+
+            if doc['_rel'] != 'skip':
+                doc['_reason'] = reason_text(sig, sem_score, text_hit, is_ultra_short,
+                                             doc.get('title', ''), question)
+                doc['_summary'] = one_sentence(doc_text)
             scored_docs.append(doc)
 
-        scored_docs.sort(key=lambda x: (0 if x['_rel'] == 'skip' else 1, -(x['_score'])), reverse=True)
+        # 按综合关联度降序排列（skip 排最后，rank 高的排前面）
+        scored_docs.sort(key=lambda x: (0 if x['_rel'] == 'skip' else 1, x['_rank']), reverse=True)
 
-        categorized = {"high": [], "medium": []}
-        seen_ids = set()  # 去重：相同 source+title 只保留第一个（最高分）
+        documents = []
+        seen_ids = set()
         for doc in scored_docs:
             rel = doc.pop('_rel')
             if rel == 'skip':
                 continue
-            # 去重键：source + title
             dedup_key = doc.get('source', '') + '|' + doc.get('title', '')
             if dedup_key in seen_ids:
                 continue
             seen_ids.add(dedup_key)
-            if rel == 'high':
-                categorized["high"].append(doc)
-            elif rel == 'medium':
-                categorized["medium"].append(doc)
-            if len(categorized["high"]) + len(categorized["medium"]) >= 20:
+            doc['_rel'] = rel  # 保留分类标签供前端样式区分
+            documents.append(doc)
+            if len(documents) >= 20:
                 break
 
         # 清理内部字段
-        for lst in categorized.values():
-            for doc in lst:
-                doc.pop('_score', None)
-                doc.pop('_idx', None)
+        for doc in documents:
+            doc.pop('_score', None)
+            doc.pop('_idx', None)
 
         return jsonify({
-            "documents": categorized,
+            "documents": documents,
             "chunks_searched": len(scored),
             "search_mode": search_mode
         })
